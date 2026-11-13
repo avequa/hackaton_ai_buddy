@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: ai-it-buddy
+    folder: AI IT-Buddy
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,57 @@
+# Линтеры, тесты с race detector, проверка конфигов стека наблюдаемости и сборка Docker-образа
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go mod tidy -diff
+      - run: go tool golangci-lint config verify
+      - run: go tool golangci-lint fmt --diff
+      - run: go tool golangci-lint run
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - run: go tool cover -func=coverage.out | tail -1
+
+  deploy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: docker compose config -q
+      - name: promtool check config and rules
+        run: >
+          docker run --rm --entrypoint promtool -v "$PWD/deploy/prometheus:/etc/prometheus:ro"
+          prom/prometheus:v3.15.1 check config /etc/prometheus/prometheus.yml
+      - name: amtool check-config
+        run: >
+          docker run --rm --entrypoint amtool -v "$PWD/deploy/alertmanager:/etc/alertmanager:ro"
+          prom/alertmanager:v0.33.1 check-config /etc/alertmanager/alertmanager.yml
+      - name: dashboard is valid JSON
+        run: python3 -m json.tool deploy/grafana/dashboards/llm-gateway.json > /dev/null
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --build-arg VERSION=${{ github.sha }} -t llm-gateway:ci .

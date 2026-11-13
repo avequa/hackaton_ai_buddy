@@ -1,0 +1,93 @@
+# AI IT-Buddy: ядро (Go), агент (Python, LangGraph), LLM-шлюз, Prometheus и Grafana.
+# Порты открыты только на 127.0.0.1 и сдвинуты (8080, 4001, 9091, 3001), чтобы не пересекаться с другими проектами.
+# Агент наружу не публикуется: к нему ходит только ядро.
+# Провайдер LLM выбирается в .env: LLM_CONFIG=llm-gateway.yaml (OpenRouter, по умолчанию) или llm-gateway.deepseek.yaml
+name: ai-it-buddy
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+
+services:
+  core:
+    <<: *hardening
+    build: ./core
+    image: ai-it-buddy-core:dev
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data:ro
+    environment:
+      CORE_ADDR: ":8080"
+      DATA_DIR: /data
+      AGENT_URL: http://agent:8000
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-0123456789}
+      DEMO_TOKEN: ${DEMO_TOKEN:-demo}
+      APPROVAL_DELAY: ${APPROVAL_DELAY:-15s}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    mem_limit: 128m
+    depends_on:
+      agent:
+        condition: service_healthy
+
+  agent:
+    <<: *hardening
+    build: ./agent
+    image: ai-it-buddy-agent:dev
+    tmpfs: [/tmp]
+    environment:
+      LLM_BASE_URL: http://llm-gateway:4000/v1
+      CORE_MCP_URL: http://core:8080/mcp
+    mem_limit: 512m
+    depends_on:
+      llm-gateway:
+        condition: service_started
+
+  llm-gateway:
+    <<: *hardening
+    build: ../llm-gateway
+    image: llm-gateway:dev
+    env_file: .env
+    ports:
+      - "127.0.0.1:4001:4000"   # на хосте 4001: порт 4000 занят другим проектом
+    volumes:
+      - ./deploy/${LLM_CONFIG:-llm-gateway.yaml}:/etc/llm-gateway/config.yaml:ro
+    mem_limit: 128m
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=7d"]
+    ports:
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - ./deploy/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    mem_limit: 256m
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"        # дашборды видны без входа (роль Viewer), только на 127.0.0.1
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/agentops.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    mem_limit: 256m
+    depends_on: [prometheus]
+
+volumes:
+  prometheus-data:
+  grafana-data:

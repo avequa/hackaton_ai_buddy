@@ -1,0 +1,49 @@
+# Тестовые сотрудники (синтетика). В Авито это данные из системы учета сотрудников и IdP, здесь - персоны для демо.
+users:
+  - id: anna.intern
+    name: Анна Смирнова
+    role: intern            # intern | mentor | lead
+    position: backend       # backend | frontend | sre
+    grade: intern
+    team: payments
+    mentor: igor.mentor
+    lead: olga.lead
+    start_date: "2026-11-02"
+  - id: pavel.intern
+    name: Павел Орлов
+    role: intern
+    position: frontend
+    grade: intern
+    team: cabinet
+    mentor: maria.mentor
+    lead: olga.lead
+    start_date: "2026-11-02"
+  - id: igor.mentor
+    name: Игорь Ковалев
+    role: mentor
+    position: backend
+    grade: senior
+    team: payments
+    lead: olga.lead
+  - id: maria.mentor
+    name: Мария Лебедева
+    role: mentor
+    position: frontend
+    grade: middle
+    team: cabinet
+    lead: olga.lead
+  - id: olga.lead
+    name: Ольга Новикова
+    role: lead
+    position: backend
+    grade: lead
+    team: payments
+
+# Доступы, которые уже выданы (у стажеров - базовые с первого дня)
+grants:
+  - {user: anna.intern, service: vpn, project: corp, level: read}
+  - {user: anna.intern, service: confluence, project: payments-space, level: read}
+  - {user: pavel.intern, service: vpn, project: corp, level: read}
+  - {user: pavel.intern, service: confluence, project: cabinet-space, level: read}
+  - {user: igor.mentor, service: gitlab, project: payments-api, level: write}
+  - {user: igor.mentor, service: grafana, project: payments-dashboards, level: write}

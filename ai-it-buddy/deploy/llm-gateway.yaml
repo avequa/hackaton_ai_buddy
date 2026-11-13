@@ -1,0 +1,45 @@
+# Конфиг llm-gateway для AI IT-Buddy: агент обращается к ролям small, main и validator, провайдер меняется только здесь.
+# По умолчанию OpenRouter, бесплатные модели (:free). Лимит общий на аккаунт: 20 запросов в минуту и 50 в день
+# (1000 в день, если на аккаунт хоть раз купили кредитов на $10). Кончился лимит - поменяй ключ в .env на другой аккаунт.
+# Fallback между :free-моделями лимит не увеличивает, он страхует от недоступности конкретной модели.
+server:
+  addr: 0.0.0.0:4000
+  shutdown_timeout: 15s
+
+upstreams:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    timeout: 90s
+    max_concurrent: 2
+    queue_timeout: 60s
+
+  # Свой ключ другого провайдера: раскомментируй блок и поменяй upstream и model в targets ниже.
+  # yandex:                       # модель: gpt://${YANDEX_FOLDER_ID}/qwen3-235b-a22b-fp8/latest
+  #   base_url: https://llm.api.cloud.yandex.net/v1
+  #   api_key_env: YANDEX_API_KEY
+  #   headers:
+  #     OpenAI-Project: ${YANDEX_FOLDER_ID}
+
+models:
+  # ID сверены со страницами моделей OpenRouter 12.11.2026, обе модели умеют tools.
+  # Бесплатные модели OpenRouter меняются: если запрос вернул 404 "unavailable for free",
+  # открой https://openrouter.ai/models?max_price=0&supported_parameters=tools и поменяй ID здесь.
+  small:                          # классификация намерения, извлечение полей
+    params: {temperature: 0}
+    max_tokens: 512
+    targets:
+      - {upstream: openrouter, model: nvidia/nemotron-3.5-super-vl:free}
+      - {upstream: openrouter, model: thinkingmachines/inkling-small:free}
+  main:                           # диалог и вызов MCP-инструментов
+    params: {temperature: 0.2}
+    max_tokens: 1024
+    targets:
+      - {upstream: openrouter, model: nvidia/nemotron-3.5-super-vl:free}
+      - {upstream: openrouter, model: thinkingmachines/inkling-small:free}
+  validator:                      # судья в eval: другое семейство моделей, чем у main
+    params: {temperature: 0}
+    max_tokens: 512
+    targets:
+      - {upstream: openrouter, model: thinkingmachines/inkling-small:free}
+      - {upstream: openrouter, model: nvidia/nemotron-3.5-super-vl:free}

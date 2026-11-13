@@ -1,0 +1,36 @@
+# Вариант с DeepSeek: включается строкой LLM_CONFIG=llm-gateway.deepseek.yaml в .env.
+# Новым аккаунтам DeepSeek дает пробные токены (около месяца), дальше нужно пополнять баланс.
+# Если ID модели у DeepSeek сменился, шлюз получит 404 и сам перейдет к следующей модели роли.
+# Актуальный список: curl https://api.deepseek.com/models -H "Authorization: Bearer $DEEPSEEK_API_KEY"
+server:
+  addr: 0.0.0.0:4000
+  shutdown_timeout: 15s
+
+upstreams:
+  deepseek:
+    base_url: https://api.deepseek.com/v1
+    api_key_env: DEEPSEEK_API_KEY
+    timeout: 90s
+    max_concurrent: 4
+    queue_timeout: 60s
+
+models:
+  small:
+    params: {temperature: 0}
+    max_tokens: 512
+    targets:
+      - {upstream: deepseek, model: deepseek-v4-flash}
+      - {upstream: deepseek, model: deepseek-chat}
+  main:
+    params: {temperature: 0.2}
+    max_tokens: 1024
+    targets:
+      - {upstream: deepseek, model: deepseek-v4-flash}
+      - {upstream: deepseek, model: deepseek-chat}
+  validator:
+    params: {temperature: 0}
+    max_tokens: 512
+    targets:
+      - {upstream: deepseek, model: deepseek-v4-pro}
+      - {upstream: deepseek, model: deepseek-v4-flash}
+      - {upstream: deepseek, model: deepseek-chat}

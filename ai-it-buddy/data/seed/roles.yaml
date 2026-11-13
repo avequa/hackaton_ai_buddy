@@ -1,0 +1,37 @@
+# Матрица ролей (синтетика): какие уровни доступа и сколько оборудования типично для должности.
+# Запрос сверх этого не запрещен, но помечается "не по роли" и сначала уходит наставнику.
+roles:
+  - match: {role: intern, position: backend}
+    typical_access:
+      gitlab: [read, write]
+      grafana: [read, write]
+      jira: [read, write]
+      confluence: [read, write]
+      vpn: [read]
+    equipment_norm: {laptop: 1, monitor: 2, headset: 1, keyboard: 1, mouse: 1}
+  - match: {role: intern, position: frontend}
+    typical_access:
+      gitlab: [read, write]
+      grafana: [read]
+      jira: [read, write]
+      confluence: [read, write]
+      vpn: [read]
+    equipment_norm: {laptop: 1, monitor: 2, headset: 1, keyboard: 1, mouse: 1}
+  - match: {role: mentor}
+    typical_access:
+      gitlab: [read, write]
+      grafana: [read, write]
+      jira: [read, write]
+      confluence: [read, write]
+      vpn: [read]
+      k8s-prod: [read]
+    equipment_norm: {laptop: 1, monitor: 2, headset: 1, keyboard: 1, mouse: 1}
+  - match: {role: lead}
+    typical_access:
+      gitlab: [read, write, admin]
+      grafana: [read, write, admin]
+      jira: [read, write, admin]
+      confluence: [read, write, admin]
+      vpn: [read]
+      k8s-prod: [read]
+    equipment_norm: {laptop: 1, monitor: 2, headset: 1, keyboard: 1, mouse: 1}

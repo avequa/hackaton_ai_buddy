@@ -1,0 +1,50 @@
+# Каталог корпоративных сервисов (синтетика). approvers - кто согласует заявку на уровень доступа:
+# owner (владелец проекта), lead (руководитель команды стажера), devops, auto (выдается автоматически).
+services:
+  - id: gitlab
+    name: GitLab
+    description: Репозитории кода, merge request-ы, CI/CD пайплайны.
+    typical_tasks: [исправить баг, написать код, сделать merge request, посмотреть код сервиса, поправить пайплайн]
+    approvers: {read: auto, write: owner, admin: devops}
+    projects:
+      - {id: payments-api, name: Сервис платежей (Go), team: payments, owner: igor.mentor}
+      - {id: payments-worker, name: Обработчик платежных событий, team: payments, owner: igor.mentor}
+      - {id: cabinet-web, name: Фронтенд личного кабинета, team: cabinet, owner: maria.mentor}
+  - id: grafana
+    name: Grafana
+    description: Дашборды метрик и алерты сервисов.
+    typical_tasks: [посмотреть метрики, поправить алерт, настроить дашборд, разобрать инцидент]
+    approvers: {read: auto, write: owner, admin: devops}
+    projects:
+      - {id: payments-dashboards, name: Дашборды и алерты платежей, team: payments, owner: igor.mentor}
+      - {id: cabinet-dashboards, name: Дашборды личного кабинета, team: cabinet, owner: maria.mentor}
+  - id: jira
+    name: Jira
+    description: Задачи команды, спринты, баг-трекер.
+    typical_tasks: [взять задачу, посмотреть спринт, завести баг]
+    approvers: {read: auto, write: lead, admin: devops}
+    projects:
+      - {id: PAY, name: Задачи команды платежей, team: payments, owner: olga.lead}
+      - {id: CAB, name: Задачи команды личного кабинета, team: cabinet, owner: olga.lead}
+  - id: confluence
+    name: Confluence
+    description: Документация команд, регламенты, runbook-и.
+    typical_tasks: [почитать документацию, написать статью, обновить runbook]
+    approvers: {read: auto, write: owner, admin: devops}
+    projects:
+      - {id: payments-space, name: Пространство команды платежей, team: payments, owner: igor.mentor}
+      - {id: cabinet-space, name: Пространство команды кабинета, team: cabinet, owner: maria.mentor}
+  - id: vpn
+    name: Корпоративный VPN
+    description: Доступ во внутреннюю сеть.
+    typical_tasks: [подключиться к внутренней сети]
+    approvers: {read: auto, admin: devops}
+    projects:
+      - {id: corp, name: Корпоративная сеть, team: "*", owner: olga.lead}
+  - id: k8s-prod
+    name: Kubernetes (prod)
+    description: Продовый кластер. Доступ только для дежурных и SRE.
+    typical_tasks: [посмотреть поды в проде, перезапустить сервис в проде]
+    approvers: {read: devops, write: devops, admin: devops}
+    projects:
+      - {id: prod-cluster, name: Продовый кластер, team: "*", owner: olga.lead}

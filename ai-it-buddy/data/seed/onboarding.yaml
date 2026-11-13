@@ -1,0 +1,14 @@
+# Путь стажера по неделям (по мотивам чек-листа стажера из кейса Авито, тестовые шаги, не регламент Авито).
+# confirm: self (отмечает стажер), mentor, lead, auto (закрывается системой по событию).
+steps:
+  - {id: meet-team, week: 1, title: Познакомиться с командой и наставником, confirm: self}
+  - {id: plan-with-lead, week: 1, title: Обсудить с руководителем цели адаптации и критерии успешной стажировки, confirm: lead}
+  - {id: vpn-access, week: 1, title: Подключиться к VPN, confirm: auto, auto: {service: vpn}}
+  - {id: gitlab-access, week: 1, title: Получить доступ к репозиторию команды в GitLab, confirm: auto, auto: {service: gitlab}}
+  - {id: jira-access, week: 1, title: Получить доступ к задачам команды в Jira, confirm: auto, auto: {service: jira}}
+  - {id: setup-env, week: 1, title: Настроить рабочее окружение и собрать сервис локально, confirm: mentor}
+  - {id: progress-tool, week: 2, title: Завести цели и задачи в инструменте отслеживания прогресса, confirm: self}
+  - {id: grafana-access, week: 2, title: Получить доступ к дашбордам команды в Grafana, confirm: auto, auto: {service: grafana}}
+  - {id: first-task, week: 2, title: Взять первую задачу из спринта, confirm: mentor}
+  - {id: first-mr, week: 3, title: Сделать первый merge request и пройти ревью, confirm: mentor}
+  - {id: oncall-intro, week: 4, title: Разобрать с наставником один прошлый инцидент по дашбордам, confirm: mentor}

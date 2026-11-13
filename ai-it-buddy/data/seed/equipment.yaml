@@ -1,0 +1,17 @@
+# Склад (синтетика). stock: 0 - для демонстрации ветки "нет в наличии".
+equipment:
+  - {id: mbp-14, category: laptop, model: "MacBook Pro 14 M4", specs: "16 ГБ, 512 ГБ", stock: 3}
+  - {id: tp-x1, category: laptop, model: "ThinkPad X1 Carbon", specs: "32 ГБ, 1 ТБ, Linux", stock: 2}
+  - {id: dell-27-4k, category: monitor, model: "Dell U2723QE 27\" 4K", specs: "USB-C 90 Вт", stock: 0}
+  - {id: lg-27-qhd, category: monitor, model: "LG 27QN880 27\" QHD", specs: "USB-C 60 Вт", stock: 4}
+  - {id: lg-24-fhd, category: monitor, model: "LG 24MP60 24\" Full HD", specs: "HDMI", stock: 6}
+  - {id: jabra-75, category: headset, model: "Jabra Evolve2 75", specs: "ANC, Bluetooth", stock: 5}
+  - {id: logi-mx-keys, category: keyboard, model: "Logitech MX Keys", specs: "RU/EN", stock: 7}
+  - {id: logi-mx-master, category: mouse, model: "Logitech MX Master 3S", specs: "", stock: 0}
+  - {id: logi-m650, category: mouse, model: "Logitech M650", specs: "", stock: 9}
+
+# Что уже выдано
+issued:
+  - {user: anna.intern, item: mbp-14}
+  - {user: anna.intern, item: lg-24-fhd}
+  - {user: pavel.intern, item: mbp-14}

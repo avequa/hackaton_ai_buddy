@@ -1,0 +1,33 @@
+# Репозиторий HackChange: ai-it-buddy (прототип) и llm-gateway (LLM-шлюз)
+
+# секреты и локальные конфиги
+.env
+*.env.bak
+llm-gateway/config.yaml
+
+# сборка и отчеты Go
+llm-gateway/bin/
+llm-gateway/dist/
+*.exe
+*.test
+*.out
+coverage.*
+report.xml
+
+# Python
+__pycache__/
+*.pyc
+.coverage
+.pytest_cache/
+.venv/
+venv/
+
+# Node (фронтенд)
+node_modules/
+dist/
+
+# редакторы и ОС
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

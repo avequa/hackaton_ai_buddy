@@ -1,0 +1,12 @@
+# Prometheus: метрики ядра (продуктовые и HTTP) и LLM-шлюза раз в 15 секунд
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: core
+    static_configs:
+      - targets: ["core:8080"]
+  - job_name: llm-gateway
+    static_configs:
+      - targets: ["llm-gateway:4000"]

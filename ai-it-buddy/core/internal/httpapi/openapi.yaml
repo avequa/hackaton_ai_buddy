@@ -1,0 +1,491 @@
+openapi: 3.1.0
+info:
+  title: AI IT-Buddy API
+  version: 0.2.0
+  description: |
+    API ядра для веб-интерфейса. Все ответы - JSON, ошибки - `{"error": "текст"}`.
+    Авторизация: `Authorization: Bearer <token>` из `POST /api/auth/login`.
+    Время - RFC 3339. Пустые списки приходят как `[]`, не `null`.
+servers:
+  - url: http://127.0.0.1:8080
+security:
+  - session: []
+
+paths:
+  /api/personas:
+    get:
+      summary: Тестовые сотрудники для экрана входа
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  personas: { type: array, items: { $ref: "#/components/schemas/User" } }
+
+  /api/auth/login:
+    post:
+      summary: Вход под тестовой персоной (имитация SSO, без пароля)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: string, example: anna.intern }
+      responses:
+        "200":
+          description: Токен сессии на 12 часов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+                  expires_in: { type: integer, description: секунды, example: 43200 }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/me:
+    get:
+      summary: Текущий пользователь
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/chat:
+    post:
+      summary: Сообщение помощнику (один ход диалога)
+      description: |
+        Синхронный запрос, ответ приходит целиком. Обычно 3-15 с, в худшем случае до 3 минут:
+        показывай индикатор ожидания и не блокируй остальной интерфейс.
+        `drafts` - все черновики пользователя, их нужно показать карточками с кнопками
+        «Подтвердить» (`POST /api/requests/{id}/confirm`) и «Отменить» (`POST /api/requests/{id}/cancel`).
+        История диалога хранится на сервере по `thread_id`; новый `thread_id` - новый диалог.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, minLength: 1, maxLength: 4000 }
+                thread_id: { type: string, default: default }
+      responses:
+        "200":
+          description: Ответ помощника
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply: { type: string }
+                  tools_used: { type: array, items: { type: string }, example: [list_services, draft_access_request] }
+                  drafts: { type: array, items: { $ref: "#/components/schemas/Request" } }
+                  thread_id: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "502":
+          description: Помощник недоступен (LLM или агент). Текст ошибки можно показать пользователю как есть.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /api/requests:
+    get:
+      summary: Мои заявки, новые сверху
+      parameters:
+        - name: kind
+          in: query
+          schema: { $ref: "#/components/schemas/Kind" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests: { type: array, items: { $ref: "#/components/schemas/Request" } }
+
+  /api/requests/{id}:
+    get:
+      summary: Заявка с историей (видят автор, его наставник и руководитель)
+      parameters: [{ $ref: "#/components/parameters/RequestID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/requests/{id}/confirm:
+    post:
+      summary: Подтвердить черновик (только автор, только статус draft)
+      description: |
+        После подтверждения статус меняется сам (согласование имитируется через 15 с):
+        опрашивай `GET /api/requests/{id}` или список заявок раз в 3-5 с, пока статус не финальный.
+      parameters: [{ $ref: "#/components/parameters/RequestID" }]
+      responses:
+        "200":
+          description: Заявка в новом статусе
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Заявка уже не черновик, или позиция закончилась на складе
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/requests/{id}/cancel:
+    post:
+      summary: Отменить свою заявку (пока по ней не принято решение)
+      parameters: [{ $ref: "#/components/parameters/RequestID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/access:
+    get:
+      summary: Мои доступы и открытые заявки на доступ
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grants: { type: array, items: { $ref: "#/components/schemas/Grant" } }
+                  open_requests: { type: array, items: { $ref: "#/components/schemas/Request" } }
+
+  /api/onboarding:
+    get:
+      summary: Мой путь адаптации
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Onboarding" }
+
+  /api/onboarding/steps/{step}/complete:
+    post:
+      summary: Отметить свой шаг (только шаги с confirm = self)
+      parameters: [{ $ref: "#/components/parameters/StepID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Step" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/mentees:
+    get:
+      summary: Мои стажеры (для наставника и руководителя), у стажера - пустой список
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentees: { type: array, items: { $ref: "#/components/schemas/Mentee" } }
+
+  /api/mentees/{user}/onboarding:
+    get:
+      summary: Путь адаптации стажера (для его наставника и руководителя)
+      parameters: [{ $ref: "#/components/parameters/UserID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Onboarding" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/mentees/{user}/steps/{step}/complete:
+    post:
+      summary: Отметить шаг стажера (наставник - confirm = mentor, руководитель - mentor и lead)
+      parameters: [{ $ref: "#/components/parameters/UserID" }, { $ref: "#/components/parameters/StepID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Step" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/approvals:
+    get:
+      summary: Очередь наставника - заявки «не по роли», которые ждут его решения
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approvals: { type: array, items: { $ref: "#/components/schemas/Request" } }
+
+  /api/approvals/{id}/{decision}:
+    post:
+      summary: Решение наставника
+      parameters:
+        - { $ref: "#/components/parameters/RequestID" }
+        - name: decision
+          in: path
+          required: true
+          schema: { type: string, enum: [approve, reject] }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment: { type: string, description: при отказе показывается стажеру как причина }
+      responses:
+        "200":
+          description: Заявка в новом статусе
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/demo/incidents:
+    post:
+      summary: Включить или снять инцидент сервиса (только для демо)
+      security: []
+      parameters:
+        - name: X-Demo-Token
+          in: header
+          required: true
+          schema: { type: string, example: demo }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, active]
+              properties:
+                service: { type: string, example: vpn }
+                title: { type: string, example: Недоступен шлюз VPN }
+                active: { type: boolean }
+      responses:
+        "200":
+          description: Состояние сервиса
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service: { type: string }
+                  status: { type: string, enum: [ok, incident] }
+                  incident:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      service: { type: string }
+                      title: { type: string }
+                      since: { type: string, format: date-time }
+        "404": { description: Неверный X-Demo-Token или демо выключено }
+
+  /api/openapi.yaml:
+    get:
+      summary: Эта спецификация
+      security: []
+      responses:
+        "200": { description: OpenAPI YAML }
+
+  /healthz:
+    get:
+      summary: Проверка живости
+      security: []
+      responses:
+        "200": { description: ok }
+
+components:
+  securitySchemes:
+    session:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    RequestID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: ACC-1001 }
+    StepID:
+      name: step
+      in: path
+      required: true
+      schema: { type: string, example: meet-team }
+    UserID:
+      name: user
+      in: path
+      required: true
+      schema: { type: string, example: anna.intern }
+
+  responses:
+    Error:
+      description: Ошибка
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, example: anna.intern }
+        name: { type: string, example: Анна Смирнова }
+        role: { type: string, enum: [intern, mentor, lead] }
+        position: { type: string, example: backend }
+        grade: { type: string, example: intern }
+        team: { type: string, example: payments }
+        mentor: { type: string, description: id наставника }
+        lead: { type: string, description: id руководителя }
+        start_date: { type: string, example: "2026-11-02" }
+
+    Kind:
+      type: string
+      enum: [access, helpdesk, equipment]
+
+    Status:
+      type: string
+      description: |
+        draft - черновик, ждет подтверждения пользователем;
+        pending_mentor - не по роли, ждет решения наставника;
+        in_review - у согласующего; approved - доступ выдан или оборудование зарезервировано;
+        rejected - отказ (причина в resolution); new - обращение зарегистрировано;
+        in_progress - обращение в работе; ready - оборудование готово к выдаче;
+        waitlisted - в листе ожидания; cancelled - отменено пользователем.
+        Финальные: approved, rejected, ready, cancelled.
+      enum: [draft, pending_mentor, in_review, approved, rejected, new, in_progress, ready, waitlisted, cancelled]
+
+    Request:
+      type: object
+      properties:
+        id: { type: string, example: ACC-1001 }
+        kind: { $ref: "#/components/schemas/Kind" }
+        user: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        title: { type: string, example: Доступ write к Grafana / Дашборды и алерты платежей }
+        policy:
+          type: object
+          description: needs_mentor - запрос не по роли, показать reasons и рекомендацию обсудить с наставником
+          properties:
+            verdict: { type: string, enum: [ok, needs_mentor] }
+            reasons: { type: array, items: { type: string } }
+        approver: { type: string, description: id согласующего или devops / it-support / it-warehouse }
+        approver_name: { type: string, example: Игорь Ковалев }
+        resolution: { type: string, description: причина отказа или итог (где забрать оборудование) }
+        access:
+          type: object
+          properties:
+            service: { type: string }
+            project: { type: string }
+            level: { type: string, enum: [read, write, admin] }
+            justification: { type: string }
+        ticket:
+          type: object
+          properties:
+            service: { type: string }
+            summary: { type: string }
+            details: { type: string }
+            steps_tried: { type: array, items: { type: string } }
+        equipment:
+          type: object
+          properties:
+            action: { type: string, enum: [issue, replace, return, waitlist, purchase] }
+            item: { type: string }
+            model: { type: string }
+            reason: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              at: { type: string, format: date-time }
+              status: { $ref: "#/components/schemas/Status" }
+              by: { type: string }
+              note: { type: string }
+
+    Grant:
+      type: object
+      properties:
+        service: { type: string, example: gitlab }
+        project: { type: string, example: payments-api }
+        level: { type: string, enum: [read, write, admin] }
+
+    Step:
+      type: object
+      properties:
+        id: { type: string }
+        week: { type: integer }
+        title: { type: string }
+        confirm: { type: string, enum: [self, mentor, lead, auto], description: кто отмечает шаг }
+        auto:
+          type: object
+          description: для confirm = auto - шаг закроется, когда выдадут доступ к сервису
+          properties:
+            service: { type: string }
+        done: { type: boolean }
+        done_by: { type: string }
+        hint: { type: string, example: отметь сам, когда сделаешь }
+
+    Onboarding:
+      type: object
+      properties:
+        user: { type: string }
+        done: { type: integer }
+        total: { type: integer }
+        next: { $ref: "#/components/schemas/Step" }
+        steps: { type: array, items: { $ref: "#/components/schemas/Step" } }
+        open_requests: { type: array, items: { $ref: "#/components/schemas/Request" } }
+
+    Mentee:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        done: { type: integer }
+        total: { type: integer }
+        next: { $ref: "#/components/schemas/Step" }
+        pending_approvals: { type: integer, description: сколько заявок этого стажера ждут решения текущего пользователя }
