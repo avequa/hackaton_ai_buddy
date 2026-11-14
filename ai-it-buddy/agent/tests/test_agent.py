@@ -243,6 +243,12 @@ def test_guard_helpers() -> None:
     assert claims_draft("Я подготовил черновики заявок на недостающие доступы")
     assert claims_draft("Проверьте карточки заявок в интерфейсе и нажмите «Подтвердить»")
     assert not claims_draft("Доступ к Grafana у тебя уже есть, заявка не нужна.")
+    # предложения и вопросы - не обещание (ложное срабатывание из живого прогона: «если готов» ~ «готов»)
+    assert not claims_draft("Монитора 4K нет на складе. Могу оформить заявку в лист ожидания, если готов подождать.")
+    assert not claims_draft("Можно встать в лист ожидания - заявку подготовить?")
+    assert not claims_draft("Хочешь, подготовлю черновик заявки на закупку?")
+    assert claims_draft("Монитора нет. Я подготовил черновик заявки в лист ожидания.")
+    assert claims_draft("Заявка создана, жди.")
     blocks = ToolMessage(content=[{"type": "text", "text": '{"outcome":"already_requested","request":{"id":"ACC-7"}}'}],
                          tool_call_id="x", name="draft_access_request")
     assert drafts_in([blocks]) == ["ACC-7"]

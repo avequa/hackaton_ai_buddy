@@ -33,7 +33,8 @@ models:
       - {upstream: openrouter, model: thinkingmachines/inkling-small:free}
   main:                           # диалог и вызов MCP-инструментов
     params: {temperature: 0.2}
-    max_tokens: 1024
+    # nemotron рассуждает перед ответом, рассуждение тоже в лимите: при 1024 ответ обрывался на полуслове
+    max_tokens: 4096
     targets:
       - {upstream: openrouter, model: nvidia/nemotron-3.5-super-vl:free}
       - {upstream: openrouter, model: thinkingmachines/inkling-small:free}

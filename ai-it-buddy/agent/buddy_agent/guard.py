@@ -20,8 +20,14 @@ _CLAIM_ACTION = re.compile(
     r"[^.!?\n]{0,60}(черновик|заявк|тикет|обращени)",
     re.IGNORECASE,
 )
-# «черновик готов», «заявка создана»
-_CLAIM_STATE = re.compile(r"(черновик\w*|заявк\w*)[^.!?\n]{0,30}(готов|создан|подготовлен|оформлен)", re.IGNORECASE)
+# «черновик готов», «заявка создана» (целые слова: «подготовить» не равно «готов»)
+_CLAIM_STATE = re.compile(
+    r"(черновик\w*|заявк\w*)[^.!?\n]{0,30}(?<!\w)(готов|готова|создан\w*|подготовлен\w*|оформлен\w*)(?!\w)",
+    re.IGNORECASE,
+)
+# предложение, вопрос или условие - не утверждение: «могу оформить», «если готов», «подготовить?»
+_OFFER = re.compile(r"(?<!\w)(могу|можно|хочешь|хотите|давай|если|нужно ли|оформить|подготовить|создать)(?!\w)", re.IGNORECASE)
+_SENTENCE = re.compile(r"[^.!?\n]+[.!?]*")
 # «нажми(те) Подтвердить» - имеет смысл, только если есть что подтверждать
 _CLAIM_CONFIRM = re.compile(r"нажм\w*[^.!?\n]{0,30}подтверд", re.IGNORECASE)
 _REQUEST_ID = re.compile(r"\b(?:ACC|HD|INV)-\d+\b")
@@ -35,8 +41,8 @@ RETRY_HINT = (
 )
 
 HONEST_FALLBACK = (
-    "Не получилось подготовить черновик автоматически. Напиши, какой сервис и уровень доступа нужен "
-    "(например, «Grafana, write, поправить алерт»), и я оформлю черновик."
+    "Не получилось подготовить черновик автоматически. Уточни, что оформить: доступ (сервис и уровень), "
+    "обращение в поддержку или оборудование - и я попробую еще раз."
 )
 
 
@@ -76,8 +82,13 @@ def known_ids(messages: list[BaseMessage]) -> set[str]:
 
 
 def claims_draft(text: str) -> bool:
-    """В тексте утверждается, что черновик или заявка уже есть."""
-    return bool(_CLAIM_ACTION.search(text) or _CLAIM_STATE.search(text) or _CLAIM_CONFIRM.search(text))
+    """В тексте утверждается, что черновик или заявка уже есть. Предложения и вопросы не считаются."""
+    for sentence in _SENTENCE.findall(text):
+        if sentence.rstrip().endswith("?") or _OFFER.search(sentence):
+            continue
+        if _CLAIM_ACTION.search(sentence) or _CLAIM_STATE.search(sentence) or _CLAIM_CONFIRM.search(sentence):
+            return True
+    return False
 
 
 def unbacked_claim(text: str, turn: list[BaseMessage], thread: list[BaseMessage]) -> bool:
