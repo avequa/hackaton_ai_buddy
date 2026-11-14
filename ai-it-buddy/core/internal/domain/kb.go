@@ -2,6 +2,7 @@ package domain
 
 import (
 	"cmp"
+	"context"
 	"slices"
 	"strings"
 	"unicode"
@@ -37,14 +38,53 @@ func tokenize(s string) []string {
 	return out
 }
 
-// SearchKB - поиск по базе знаний: совпадения в тегах весят больше, чем в заголовке, а в заголовке - больше, чем в тексте.
-// Это заглушка с тем же контрактом, что будет у гибридного поиска (pgvector + полнотекстовый Postgres).
-func (c *Core) SearchKB(query string, limit int) []DocHit {
+// synonyms - как стажеры пишут в чате и как написано в инструкциях. Ключ - основа слова (как в tokenize).
+var synonyms = map[string]string{
+	"впн": "vpn", "гит": "gitlab", "гитлаб": "gitlab", "графан": "grafana", "жира": "jira", "джира": "jira",
+	"конфлю": "confluence", "кубер": "k8s", "тормоз": "медленно", "тупит": "медленно", "лагает": "медленно",
+	"ноут": "ноутбук", "комп": "ноутбук", "мышка": "мышь", "наушни": "гарнитура",
+}
+
+// expandQuery - добавляет к запросу слова из инструкций для жаргона: «впн тормозит» ищется и как «vpn медленно»
+func expandQuery(query string) string {
+	var extra []string
+	for _, w := range tokenize(query) {
+		if s, ok := synonyms[w]; ok {
+			extra = append(extra, s)
+		}
+	}
+	if len(extra) == 0 {
+		return query
+	}
+	return query + " " + strings.Join(extra, " ")
+}
+
+// SearchKB - поиск по базе знаний: в Postgres (полнотекстовый, русская морфология), если он подключен,
+// иначе или при ошибке базы - в памяти. Помощник продолжает отвечать, даже когда база недоступна.
+func (c *Core) SearchKB(ctx context.Context, query string, limit int) []DocHit {
+	limit = min(max(limit, 1), 3)
+	query = expandQuery(query)
+	c.mu.Lock()
+	kb := c.kb
+	c.mu.Unlock()
+	if kb != nil && strings.TrimSpace(query) != "" {
+		hits, err := kb.SearchKB(ctx, query, limit)
+		if err == nil {
+			return hits
+		}
+		if c.opts.OnKBError != nil {
+			c.opts.OnKBError(err)
+		}
+	}
+	return c.searchMemory(query, limit)
+}
+
+// searchMemory - поиск без базы: совпадения в тегах весят больше, чем в заголовке, а в заголовке - больше, чем в тексте
+func (c *Core) searchMemory(query string, limit int) []DocHit {
 	q := tokenize(query)
 	if len(q) == 0 {
 		return nil
 	}
-	limit = min(max(limit, 1), 3)
 	var hits []DocHit
 	for _, d := range c.docs {
 		tags := tokenize(strings.Join(d.Tags, " ") + " " + d.Service)

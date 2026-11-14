@@ -24,7 +24,8 @@ server: { proxy: { '/api': 'http://127.0.0.1:8080' } }
 2. `POST /api/auth/login {"user_id"}` -> `{token, user, expires_in}`. Токен живет 12 часов.
 3. Дальше заголовок `Authorization: Bearer <token>`. На `401` - вернуть на экран входа.
 
-Роль из `user.role`: `intern`, `mentor`, `lead`. От нее зависит, какие экраны показывать.
+Роль из `user.role`: `intern`, `mentor`, `lead`, `sre`. От нее зависит, какие экраны показывать.
+Тестовый SRE для объявления сбоев - `sergey.sre`.
 
 ## Экраны и эндпоинты
 
@@ -38,6 +39,12 @@ server: { proxy: { '/api': 'http://127.0.0.1:8080' } }
 | Наставник: стажеры | `GET /api/mentees`, путь стажера: `GET /api/mentees/{user}/onboarding` |
 | Наставник: отметить шаг | `POST /api/mentees/{user}/steps/{step}/complete` |
 | Наставник: согласования | `GET /api/approvals`, решение: `POST /api/approvals/{id}/approve` или `/reject` с `{"comment"}` |
+| Наставник: сводка по стажеру | `GET /api/mentees/{user}/digest` |
+| Наставник: тревоги | `GET /api/security/events` |
+| Уведомления (в окне чата) | `GET /api/notifications?after=<id>`, прочитано: `POST /api/notifications/read {"up_to"}` |
+| Баннер сбоя | `GET /api/incidents` |
+| SRE: объявить и закрыть сбой | `POST /api/incidents {"service","title","message"}`, `POST /api/incidents/{id}/resolve` |
+| Стажер: стартовый набор | `POST /api/onboarding/starter-pack`, затем `POST /api/requests/confirm-batch {"ids"}` |
 
 ## Чат
 
@@ -89,6 +96,44 @@ server: { proxy: { '/api': 'http://127.0.0.1:8080' } }
 | `auto` | система, когда выдадут доступ к `auto.service` | нет |
 
 `next` - следующий шаг, его стоит выделить. `open_requests` - незакрытые заявки для боковой панели.
+
+## Уведомления
+
+Лента одна на пользователя, общая для всех экранов. Показывать в окне чата как системные сообщения и счетчиком на колокольчике.
+
+Опрос: `GET /api/notifications?after=<id последнего полученного>` раз в 3-5 секунд. Первый запрос без `after`.
+В ответе `unread` - сколько непрочитанных всего. Когда пользователь увидел ленту - `POST /api/notifications/read {"up_to": <id последнего>}`.
+
+| kind | Кому | Что показать |
+|---|---|---|
+| `incident` | всем | Баннер с `title` («Сбой: Корпоративный VPN») и `text` поверх чата, пока инцидент открыт (`GET /api/incidents`, нет `resolved_at`). Если у инцидента `by: "incident-radar"` - подпись «обнаружено автоматически по логам» |
+| `incident_resolved` | всем | Убрать баннер, сообщение «Восстановлено» |
+| `request` | автору заявки | Статус изменился. `ref` - id заявки, обновить карточку |
+| `approval` | наставнику | Заявка не по роли ждет решения. `ref` - id заявки, ссылка в очередь согласований |
+| `security` | наставнику и руководителю | Стажер пытался выйти за права. `ref` - id стажера. Выделить цветом |
+| `digest` | наставнику | Сводка по стажеру. `ref` - id стажера, ссылка на `/api/mentees/{ref}/digest` |
+| `starter_pack` | стажеру при первом входе | Кнопка «Подготовить заявки» -> стартовый набор |
+
+## Стартовый набор
+
+При первом входе стажер получает уведомление `starter_pack`. Кнопка в нем:
+1. `POST /api/onboarding/starter-pack` - в ответе `items` (что войдет, что уже есть) и `draft_ids`.
+2. Показать список, кнопка «Подтвердить все» -> `POST /api/requests/confirm-batch {"ids": draft_ids}`.
+3. В `results` у каждой заявки свой итог: `request` или `error`. Ошибка одной не отменяет остальные.
+
+Повторный вызов безопасен: уже выданные и запрошенные доступы не дублируются.
+
+## Сводка для наставника
+
+`GET /api/mentees/{user}/digest` - экран перед встречей 1:1. Главное - `talking_points`: готовый список, что обсудить.
+Остальные поля - детали: `overdue` (отстает от плана), `waiting_for_you` (ждут решения наставника),
+`steps_to_confirm` (шаги, которые отмечает он), `stuck_requests` (висят больше суток), `rejected`, `topics` (с чем
+стажер приходил к помощнику, без текста переписки), `security_events`.
+
+## Состояние системы
+
+`GET /readyz` без токена: `{"status": "ok" | "degraded", "storage": "postgres" | "memory", "pending_changes": 0}`.
+`degraded` - база недоступна, ядро работает из памяти. Интерфейсу можно показать тонкую плашку «Сохраняем изменения…», блокировать ничего не нужно.
 
 ## Коды ответа
 

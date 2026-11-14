@@ -110,8 +110,8 @@ func userID(req *mcp.CallToolRequest) (string, error) {
 }
 
 // call - общая обертка: пользователь из токена, метрика, лог, понятная модели ошибка
-func call[In, Out any](a *API, server, tool string, fn func(user string, in In) (Out, string, error)) mcp.ToolHandlerFor[In, Out] {
-	return func(_ context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+func call[In, Out any](a *API, server, tool string, fn func(ctx context.Context, user string, in In) (Out, string, error)) mcp.ToolHandlerFor[In, Out] {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		start := time.Now()
 		var zero Out
 		user, err := userID(req)
@@ -119,7 +119,7 @@ func call[In, Out any](a *API, server, tool string, fn func(user string, in In) 
 			a.metrics.Denied.WithLabelValues("mcp_no_user").Inc()
 			return nil, zero, err
 		}
-		out, outcome, err := fn(user, in)
+		out, outcome, err := fn(ctx, user, in)
 		if err != nil {
 			outcome = errorOutcome(err)
 			if outcome == "forbidden" || outcome == "not_found" {
@@ -199,7 +199,7 @@ func (a *API) addListRequests(s *mcp.Server, server, kind string) {
 		Name:        name,
 		Description: fmt.Sprintf("Lists the current user's %s requests with status and rejection reason, newest first.", kind),
 		Annotations: readOnly,
-	}, call(a, server, name, func(user string, _ RequestsInput) (RequestsOutput, string, error) {
+	}, call(a, server, name, func(_ context.Context, user string, _ RequestsInput) (RequestsOutput, string, error) {
 		out := RequestsOutput{Requests: []RequestBrief{}}
 		for _, r := range a.core.MyRequests(user, kind) {
 			out.Requests = append(out.Requests, brief(r))

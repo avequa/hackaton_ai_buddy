@@ -1,4 +1,4 @@
-# AI IT-Buddy: ядро (Go), агент (Python, LangGraph), LLM-шлюз, Prometheus и Grafana.
+# AI IT-Buddy: ядро (Go), Postgres, агент (Python, LangGraph), LLM-шлюз, incident-radar, Prometheus и Grafana.
 # Порты открыты только на 127.0.0.1 и сдвинуты (8080, 4001, 9091, 3001), чтобы не пересекаться с другими проектами.
 # Агент наружу не публикуется: к нему ходит только ядро.
 # Провайдер LLM выбирается в .env: LLM_CONFIG=llm-gateway.yaml (OpenRouter, по умолчанию) или llm-gateway.deepseek.yaml
@@ -27,10 +27,35 @@ services:
       DEMO_TOKEN: ${DEMO_TOKEN:-demo}
       APPROVAL_DELAY: ${APPROVAL_DELAY:-15s}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      DATABASE_URL: postgres://buddy:${POSTGRES_PASSWORD:-buddy-dev-password}@postgres:5432/buddy?sslmode=disable
+      RADAR_URL: http://incident-radar:8765/mcp
+      RADAR_TOKEN: ${RADAR_TOKEN:-dev-radar-token}
+      RADAR_SERVICES: vpn,gitlab
     mem_limit: 128m
     depends_on:
+      postgres:
+        condition: service_healthy
       agent:
         condition: service_healthy
+
+  # Заявки, доступы, уведомления, база знаний (полнотекстовый поиск). Наружу не публикуется:
+  # посмотреть руками - docker compose exec postgres psql -U buddy
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: buddy
+      POSTGRES_DB: buddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buddy-dev-password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "buddy", "-d", "buddy"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    mem_limit: 256m
 
   agent:
     <<: *hardening
@@ -45,11 +70,40 @@ services:
       llm-gateway:
         condition: service_started
 
+  # Сбои по логам: loggen пишет access-логи NGINX для VPN и GitLab, incident-radar их считает,
+  # ядро раз в 10 секунд спрашивает радар по MCP и само открывает и закрывает инциденты.
+  # Включить сбой для демо: curl -XPOST localhost:8092/outages -d '{"service":"vpn","error_rate":0.7}'
+  loggen:
+    <<: *hardening
+    build: ./loggen
+    image: ai-it-buddy-loggen:dev
+    ports:
+      - "127.0.0.1:8092:8092"
+    environment:
+      LOG_DIR: /logs
+      LOGGEN_SERVICES: vpn,gitlab
+    volumes:
+      - nginx-logs:/logs
+    mem_limit: 32m
+
+  incident-radar:
+    <<: *hardening
+    build: ../incident-radar
+    image: incident-radar:dev
+    environment:
+      INCIDENT_RADAR_MCP_TOKEN: ${RADAR_TOKEN:-dev-radar-token}
+    volumes:
+      - nginx-logs:/logs:ro
+    mem_limit: 128m
+    depends_on: [loggen]
+
   llm-gateway:
     <<: *hardening
     build: ../llm-gateway
     image: llm-gateway:dev
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false   # без .env шлюз поднимется, но модели ответят 401: ключ нужен для чата
     ports:
       - "127.0.0.1:4001:4000"   # на хосте 4001: порт 4000 занят другим проектом
     volumes:
@@ -89,5 +143,7 @@ services:
     depends_on: [prometheus]
 
 volumes:
+  nginx-logs:
+  postgres-data:
   prometheus-data:
   grafana-data:

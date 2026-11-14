@@ -26,6 +26,15 @@ roles:
       vpn: [read]
       k8s-prod: [read]
     equipment_norm: {laptop: 1, monitor: 2, headset: 1, keyboard: 1, mouse: 1}
+  - match: {role: sre}
+    typical_access:
+      gitlab: [read, write]
+      grafana: [read, write, admin]
+      jira: [read, write]
+      confluence: [read, write]
+      vpn: [read]
+      k8s-prod: [read, write]
+    equipment_norm: {laptop: 1, monitor: 2, headset: 1, keyboard: 1, mouse: 1}
   - match: {role: lead}
     typical_access:
       gitlab: [read, write, admin]

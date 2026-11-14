@@ -1,0 +1,73 @@
+# promtool test rules alerts_test.yml
+rule_files: [alerts.yml]
+evaluation_interval: 15s
+
+tests:
+  - name: база недоступна - алерт, вернулась - тишина
+    interval: 15s
+    input_series:
+      - series: buddy_store_flushes_total{result="error"}
+        values: 0 0 4 8 12 16 20 24 28 28 28 28 28 28 28 28
+      - series: buddy_store_pending_changes
+        values: 0 0 3 5 7 9 11 13 15 0 0 0 0 0 0 0
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PostgresWritesFailing
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Изменения не пишутся в Postgres
+              description: >-
+                Ядро продолжает работать из памяти и допишет изменения, когда база вернется.
+                Если ядро перезапустить сейчас, незаписанные изменения пропадут. /readyz покажет текст ошибки.
+      - eval_time: 3m45s
+        alertname: PostgresWritesFailing
+        exp_alerts: []
+
+  - name: сбой VPN по логам
+    interval: 15s
+    input_series:
+      - series: buddy_radar_error_rate{service="vpn"}
+        values: 0 0 0.6 0.6 0.6 0.6 0.6 0.6 0.01
+      - series: buddy_radar_error_rate{service="gitlab"}
+        values: 0 0 0 0 0 0 0 0 0
+    alert_rule_test:
+      - eval_time: 1m45s
+        alertname: ServiceErrorRateHigh
+        exp_alerts:
+          - exp_labels: {severity: critical, service: vpn}
+            exp_annotations:
+              summary: "vpn: 60% запросов с 5xx по логам NGINX"
+              description: Ядро уже открыло инцидент и уведомило сотрудников. Этот алерт - для дежурного SRE.
+      - eval_time: 2m15s
+        alertname: ServiceErrorRateHigh
+        exp_alerts: []
+
+  - name: радар недоступен
+    interval: 15s
+    input_series:
+      - series: buddy_radar_checks_total{service="vpn",result="error"}
+        values: 0 0 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+      - series: buddy_radar_checks_total{service="vpn",result="ok"}
+        values: 1 2 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RadarUnavailable
+        exp_alerts:
+          - exp_labels: {severity: warning, service: vpn}
+            exp_annotations:
+              summary: incident-radar не отвечает, сбои vpn автоматически не обнаруживаются
+
+  - name: атаки через чат
+    interval: 1m
+    input_series:
+      - series: buddy_security_events_total{kind="chat_attack"}
+        values: 0 1 2 3 4
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ChatAttacks
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Попыток обойти правила через чат за 10 минут: 4"
+              description: Наставники уже получили уведомления. Список событий - GET /api/security/events.

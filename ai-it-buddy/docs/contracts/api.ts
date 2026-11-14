@@ -13,7 +13,7 @@ import { z } from "zod";
 
 // ---------- справочники ----------
 
-export const Role = z.enum(["intern", "mentor", "lead"]);
+export const Role = z.enum(["intern", "mentor", "lead", "sre"]);
 export const Kind = z.enum(["access", "helpdesk", "equipment"]);
 export const Level = z.enum(["read", "write", "admin"]);
 export const Confirm = z.enum(["self", "mentor", "lead", "auto"]);
@@ -137,6 +137,80 @@ export const Mentee = z.object({
 });
 export type Mentee = z.infer<typeof Mentee>;
 
+export const NotificationKind = z.enum([
+  "incident", "incident_resolved", "request", "approval", "security", "digest", "starter_pack",
+]);
+export type NotificationKind = z.infer<typeof NotificationKind>;
+
+/** Уведомление в ленте чата. ref - id заявки (request, approval), инцидента (incident*) или стажера (security, digest) */
+export const Notification = z.object({
+  id: z.number(),
+  kind: NotificationKind,
+  title: z.string(),
+  text: z.string(),
+  ref: z.string().optional(),
+  created_at: z.string(),
+  read: z.boolean(),
+});
+export type Notification = z.infer<typeof Notification>;
+
+export const Incident = z.object({
+  id: z.string(),
+  service: z.string(),
+  title: z.string(),
+  message: z.string().optional(),
+  since: z.string(),
+  by: z.string().optional(), // имя SRE или "incident-radar" - найден автоматически по логам
+  resolved_at: z.string().optional(), // нет - инцидент открыт
+});
+export type Incident = z.infer<typeof Incident>;
+export const RADAR = "incident-radar";
+
+export const Readiness = z.object({
+  status: z.enum(["ok", "degraded"]),
+  storage: z.enum(["postgres", "memory"]),
+  pending_changes: z.number(),
+  last_flush_at: z.string().optional(),
+  error: z.string().optional(),
+});
+export type Readiness = z.infer<typeof Readiness>;
+
+export const SecurityEvent = z.object({
+  id: z.number(),
+  user: z.string(),
+  name: z.string(),
+  kind: z.enum(["foreign_object", "forbidden", "chat_attack"]),
+  detail: z.string(),
+  at: z.string(),
+});
+export type SecurityEvent = z.infer<typeof SecurityEvent>;
+
+export const Digest = z.object({
+  intern: User,
+  week: z.number(),
+  done: z.number(),
+  total: z.number(),
+  next: Step.optional(),
+  overdue: z.array(Step),
+  waiting_for_you: z.array(Request),
+  steps_to_confirm: z.array(Step),
+  stuck_requests: z.array(Request),
+  rejected: z.array(Request),
+  topics: z.array(z.object({ topic: z.string(), count: z.number() })),
+  unanswered_in_kb: z.number(),
+  security_events: z.array(SecurityEvent),
+  talking_points: z.array(z.string()),
+});
+export type Digest = z.infer<typeof Digest>;
+
+export const StarterItem = z.object({
+  service: z.string(),
+  project: z.string(),
+  level: z.string(),
+  outcome: z.enum(["draft_created", "already_granted", "already_requested"]),
+  request: Request.optional(),
+});
+
 // ---------- ответы эндпоинтов ----------
 
 export const LoginResponse = z.object({ token: z.string(), user: User, expires_in: z.number() });
@@ -156,6 +230,13 @@ const Access = z.object({ grants: z.array(Grant), open_requests: z.array(Request
 const Mentees = z.object({ mentees: z.array(Mentee) });
 const Approvals = z.object({ approvals: z.array(Request) });
 const ErrorBody = z.object({ error: z.string() });
+const Notifications = z.object({ notifications: z.array(Notification), unread: z.number() });
+const Incidents = z.object({ incidents: z.array(Incident) });
+const SecurityEvents = z.object({ events: z.array(SecurityEvent) });
+const StarterPack = z.object({ items: z.array(StarterItem), draft_ids: z.array(z.string()) });
+const ConfirmBatch = z.object({
+  results: z.array(z.object({ id: z.string(), request: Request.optional(), error: z.string().optional() })),
+});
 
 // ---------- клиент ----------
 
@@ -219,6 +300,23 @@ export function createApi(opts: ApiOptions) {
     menteeOnboarding: (userId: string) => call(Onboarding, "GET", `/api/mentees/${id(userId)}/onboarding`),
     completeMenteeStep: (userId: string, stepId: string) =>
       call(Step, "POST", `/api/mentees/${id(userId)}/steps/${id(stepId)}/complete`),
+
+    /** Лента для окна чата: опрашивать раз в 3-5 с, after = id последнего полученного */
+    notifications: (after = 0) => call(Notifications, "GET", `/api/notifications?after=${after}`),
+    markRead: (upTo: number) => call(z.object({ marked: z.number() }), "POST", "/api/notifications/read", { up_to: upTo }),
+
+    incidents: () => call(Incidents, "GET", "/api/incidents").then((r) => r.incidents),
+    /** Только роль sre или lead, иначе 403. 409 - по сервису уже открыт инцидент */
+    openIncident: (body: { service: string; title: string; message?: string }) => call(Incident, "POST", "/api/incidents", body),
+    resolveIncident: (incId: string) => call(Incident, "POST", `/api/incidents/${id(incId)}/resolve`),
+
+    /** Черновики стандартных доступов стажера; затем confirmBatch(draft_ids) */
+    starterPack: () => call(StarterPack, "POST", "/api/onboarding/starter-pack"),
+    /** Ошибка одной заявки не отменяет остальные - смотри results[].error */
+    confirmBatch: (ids: string[]) => call(ConfirmBatch, "POST", "/api/requests/confirm-batch", { ids }),
+
+    digest: (userId: string) => call(Digest, "GET", `/api/mentees/${id(userId)}/digest`),
+    securityEvents: () => call(SecurityEvents, "GET", "/api/security/events").then((r) => r.events),
 
     approvals: () => call(Approvals, "GET", "/api/approvals").then((r) => r.approvals),
     /** comment при отказе стажер увидит как причину */

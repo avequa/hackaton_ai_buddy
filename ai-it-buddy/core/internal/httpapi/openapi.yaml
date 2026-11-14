@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AI IT-Buddy API
-  version: 0.2.0
+  version: 0.4.0
   description: |
     API ядра для веб-интерфейса. Все ответы - JSON, ошибки - `{"error": "текст"}`.
     Авторизация: `Authorization: Bearer <token>` из `POST /api/auth/login`.
@@ -14,6 +14,7 @@ security:
 paths:
   /api/personas:
     get:
+      operationId: listPersonas
       summary: Тестовые сотрудники для экрана входа
       security: []
       responses:
@@ -28,6 +29,7 @@ paths:
 
   /api/auth/login:
     post:
+      operationId: login
       summary: Вход под тестовой персоной (имитация SSO, без пароля)
       security: []
       requestBody:
@@ -55,6 +57,7 @@ paths:
 
   /api/me:
     get:
+      operationId: getMe
       summary: Текущий пользователь
       responses:
         "200":
@@ -66,6 +69,7 @@ paths:
 
   /api/chat:
     post:
+      operationId: chat
       summary: Сообщение помощнику (один ход диалога)
       description: |
         Синхронный запрос, ответ приходит целиком. Обычно 3-15 с, в худшем случае до 3 минут:
@@ -106,6 +110,7 @@ paths:
 
   /api/requests:
     get:
+      operationId: listMyRequests
       summary: Мои заявки, новые сверху
       parameters:
         - name: kind
@@ -123,6 +128,7 @@ paths:
 
   /api/requests/{id}:
     get:
+      operationId: getRequest
       summary: Заявка с историей (видят автор, его наставник и руководитель)
       parameters: [{ $ref: "#/components/parameters/RequestID" }]
       responses:
@@ -135,6 +141,7 @@ paths:
 
   /api/requests/{id}/confirm:
     post:
+      operationId: confirmRequest
       summary: Подтвердить черновик (только автор, только статус draft)
       description: |
         После подтверждения статус меняется сам (согласование имитируется через 15 с):
@@ -155,6 +162,7 @@ paths:
 
   /api/requests/{id}/cancel:
     post:
+      operationId: cancelRequest
       summary: Отменить свою заявку (пока по ней не принято решение)
       parameters: [{ $ref: "#/components/parameters/RequestID" }]
       responses:
@@ -168,6 +176,7 @@ paths:
 
   /api/access:
     get:
+      operationId: getMyAccess
       summary: Мои доступы и открытые заявки на доступ
       responses:
         "200":
@@ -182,6 +191,7 @@ paths:
 
   /api/onboarding:
     get:
+      operationId: getMyOnboarding
       summary: Мой путь адаптации
       responses:
         "200":
@@ -192,6 +202,7 @@ paths:
 
   /api/onboarding/steps/{step}/complete:
     post:
+      operationId: completeMyStep
       summary: Отметить свой шаг (только шаги с confirm = self)
       parameters: [{ $ref: "#/components/parameters/StepID" }]
       responses:
@@ -205,6 +216,7 @@ paths:
 
   /api/mentees:
     get:
+      operationId: listMentees
       summary: Мои стажеры (для наставника и руководителя), у стажера - пустой список
       responses:
         "200":
@@ -218,6 +230,7 @@ paths:
 
   /api/mentees/{user}/onboarding:
     get:
+      operationId: getMenteeOnboarding
       summary: Путь адаптации стажера (для его наставника и руководителя)
       parameters: [{ $ref: "#/components/parameters/UserID" }]
       responses:
@@ -230,6 +243,7 @@ paths:
 
   /api/mentees/{user}/steps/{step}/complete:
     post:
+      operationId: completeMenteeStep
       summary: Отметить шаг стажера (наставник - confirm = mentor, руководитель - mentor и lead)
       parameters: [{ $ref: "#/components/parameters/UserID" }, { $ref: "#/components/parameters/StepID" }]
       responses:
@@ -243,6 +257,7 @@ paths:
 
   /api/approvals:
     get:
+      operationId: listApprovals
       summary: Очередь наставника - заявки «не по роли», которые ждут его решения
       responses:
         "200":
@@ -256,6 +271,7 @@ paths:
 
   /api/approvals/{id}/{decision}:
     post:
+      operationId: decideApproval
       summary: Решение наставника
       parameters:
         - { $ref: "#/components/parameters/RequestID" }
@@ -281,6 +297,7 @@ paths:
 
   /api/demo/incidents:
     post:
+      operationId: demoSetIncident
       summary: Включить или снять инцидент сервиса (только для демо)
       security: []
       parameters:
@@ -318,8 +335,222 @@ paths:
                       since: { type: string, format: date-time }
         "404": { description: Неверный X-Demo-Token или демо выключено }
 
+  /api/notifications:
+    get:
+      operationId: listNotifications
+      summary: Лента уведомлений для окна чата
+      description: |
+        Опрашивай раз в 3-5 с с `after` = id последнего полученного уведомления (первый раз без него).
+        Виды: incident (SRE объявили сбой - показать баннер), incident_resolved, request (статус моей заявки),
+        approval (наставнику: заявка ждет решения), security (наставнику: стажер пытался выйти за права),
+        digest (наставнику: сводка по стажеру), starter_pack (стажеру: предложение стартового набора).
+      parameters:
+        - name: after
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Новые уведомления, старые сверху (не больше 100), и сколько непрочитанных всего
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications: { type: array, items: { $ref: "#/components/schemas/Notification" } }
+                  unread: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/notifications/read:
+    post:
+      operationId: markNotificationsRead
+      summary: Отметить прочитанными все уведомления до up_to включительно
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [up_to]
+              properties:
+                up_to: { type: integer }
+      responses:
+        "200":
+          description: Сколько отмечено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marked: { type: integer }
+
+  /api/incidents:
+    get:
+      operationId: listIncidents
+      summary: Открытые инциденты и закрытые за сутки (баннер в интерфейсе)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  incidents: { type: array, items: { $ref: "#/components/schemas/Incident" } }
+    post:
+      operationId: openIncident
+      summary: Объявить сбой (роль sre или lead). Всем сразу приходит уведомление
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, title]
+              properties:
+                service: { type: string, example: vpn }
+                title: { type: string, example: Недоступен шлюз VPN в Москве }
+                message: { type: string, example: Работайте через резервный шлюз vpn2 }
+      responses:
+        "200":
+          description: Инцидент
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: По этому сервису уже открыт инцидент
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/incidents/{id}/resolve:
+    post:
+      operationId: resolveIncident
+      summary: Закрыть сбой (роль sre или lead). Всем приходит уведомление
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: INC-101 }
+      responses:
+        "200":
+          description: Закрытый инцидент
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/onboarding/starter-pack:
+    post:
+      operationId: createStarterPack
+      summary: Стартовый набор - черновики стандартных доступов стажера по роли и команде
+      description: |
+        Повторный вызов безопасен: уже выданные и уже запрошенные доступы не дублируются.
+        Подтвердить все одной кнопкой - `POST /api/requests/confirm-batch` с `draft_ids`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        service: { type: string }
+                        project: { type: string }
+                        level: { type: string }
+                        outcome: { type: string, enum: [draft_created, already_granted, already_requested] }
+                        request: { $ref: "#/components/schemas/Request" }
+                  draft_ids: { type: array, items: { type: string } }
+
+  /api/requests/confirm-batch:
+    post:
+      operationId: confirmRequestsBatch
+      summary: Подтвердить несколько своих черновиков одной кнопкой
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, items: { type: string }, minItems: 1, maxItems: 20 }
+      responses:
+        "200":
+          description: Результат по каждой заявке; ошибка одной не отменяет остальные
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        request: { $ref: "#/components/schemas/Request" }
+                        error: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/mentees/{user}/digest:
+    get:
+      operationId: getMenteeDigest
+      summary: Сводка по стажеру для наставника или руководителя (без текста переписки)
+      parameters: [{ $ref: "#/components/parameters/UserID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Digest" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/security/events:
+    get:
+      operationId: listSecurityEvents
+      summary: Попытки выйти за права у моих стажеров (для наставника и руководителя)
+      responses:
+        "200":
+          description: Новые сверху
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: array, items: { $ref: "#/components/schemas/SecurityEvent" } }
+
+  /api/demo/digests:
+    post:
+      operationId: demoSendDigests
+      summary: Разослать сводки наставникам сейчас (только для демо; в работе - раз в неделю)
+      security: []
+      parameters:
+        - name: X-Demo-Token
+          in: header
+          required: true
+          schema: { type: string, example: demo }
+      responses:
+        "200":
+          description: Сколько сводок отправлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: integer }
+        "404": { description: Неверный X-Demo-Token или демо выключено }
+
   /api/openapi.yaml:
     get:
+      operationId: getOpenAPI
       summary: Эта спецификация
       security: []
       responses:
@@ -327,10 +558,33 @@ paths:
 
   /healthz:
     get:
+      operationId: healthz
       summary: Проверка живости
       security: []
       responses:
         "200": { description: ok }
+  /readyz:
+    get:
+      operationId: readyz
+      summary: Готовность и состояние хранилища
+      description: |
+        200 и при недоступной базе: ядро работает из памяти и допишет изменения позже (`status: degraded`).
+        Снимать ядро с трафика незачем, нужно чинить базу.
+      security: []
+      responses:
+        "200":
+          description: состояние
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, storage, pending_changes]
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  storage: { type: string, enum: [postgres, memory] }
+                  pending_changes: { type: integer, description: "изменения, еще не записанные в Postgres" }
+                  last_flush_at: { type: string, format: date-time }
+                  error: { type: string }
 
 components:
   securitySchemes:
@@ -374,7 +628,7 @@ components:
       properties:
         id: { type: string, example: anna.intern }
         name: { type: string, example: Анна Смирнова }
-        role: { type: string, enum: [intern, mentor, lead] }
+        role: { type: string, enum: [intern, mentor, lead, sre] }
         position: { type: string, example: backend }
         grade: { type: string, example: intern }
         team: { type: string, example: payments }
@@ -469,7 +723,7 @@ components:
             service: { type: string }
         done: { type: boolean }
         done_by: { type: string }
-        hint: { type: string, example: отметь сам, когда сделаешь }
+        hint: { type: string, example: "отметь сам, когда сделаешь" }
 
     Onboarding:
       type: object
@@ -480,6 +734,62 @@ components:
         next: { $ref: "#/components/schemas/Step" }
         steps: { type: array, items: { $ref: "#/components/schemas/Step" } }
         open_requests: { type: array, items: { $ref: "#/components/schemas/Request" } }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [incident, incident_resolved, request, approval, security, digest, starter_pack] }
+        title: { type: string, example: "Сбой: vpn" }
+        text: { type: string }
+        ref: { type: string, description: "id заявки (request, approval), инцидента (incident*) или стажера (security, digest)" }
+        created_at: { type: string, format: date-time }
+        read: { type: boolean }
+
+    Incident:
+      type: object
+      properties:
+        id: { type: string, example: INC-101 }
+        service: { type: string }
+        title: { type: string }
+        message: { type: string, description: что делать пользователям }
+        since: { type: string, format: date-time }
+        by: { type: string, example: Сергей Волков }
+        resolved_at: { type: string, format: date-time, description: нет - инцидент открыт }
+
+    SecurityEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        user: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [foreign_object, forbidden, chat_attack] }
+        detail: { type: string, example: "просит игнорировать инструкции: «игнорируй все...»" }
+        at: { type: string, format: date-time }
+
+    Digest:
+      type: object
+      properties:
+        intern: { $ref: "#/components/schemas/User" }
+        week: { type: integer, description: текущая неделя стажировки }
+        done: { type: integer }
+        total: { type: integer }
+        next: { $ref: "#/components/schemas/Step" }
+        overdue: { type: array, items: { $ref: "#/components/schemas/Step" }, description: "шаги прошлых недель, которые не сделаны" }
+        waiting_for_you: { type: array, items: { $ref: "#/components/schemas/Request" } }
+        steps_to_confirm: { type: array, items: { $ref: "#/components/schemas/Step" }, description: "шаги, которые отмечает текущий пользователь" }
+        stuck_requests: { type: array, items: { $ref: "#/components/schemas/Request" }, description: открыты дольше суток }
+        rejected: { type: array, items: { $ref: "#/components/schemas/Request" }, description: отказы за неделю }
+        topics:
+          type: array
+          items:
+            type: object
+            properties:
+              topic: { type: string, example: VPN не подключается }
+              count: { type: integer }
+        unanswered_in_kb: { type: integer }
+        security_events: { type: array, items: { $ref: "#/components/schemas/SecurityEvent" } }
+        talking_points: { type: array, items: { type: string }, description: что обсудить на встрече 1:1 }
 
     Mentee:
       type: object

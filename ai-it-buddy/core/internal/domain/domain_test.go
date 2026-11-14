@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -312,9 +313,40 @@ func TestInventory_WaitlistPurchaseReturn(t *testing.T) {
 	if changed := tick(c, clk); len(changed) != 1 || changed[0].Status != domain.StatusApproved {
 		t.Fatalf("purchase decided = %+v", changed)
 	}
+	stockBefore := func() int {
+		items, _, _ := c.Equipment("pavel.intern", "laptop")
+		for _, it := range items {
+			if it.ID == "mbp-14" {
+				return it.Stock
+			}
+		}
+		return -1
+	}
+	laptops := func() int {
+		_, hs, _ := c.Equipment("pavel.intern", "")
+		for _, h := range hs {
+			if h.Category == "laptop" {
+				return h.Has
+			}
+		}
+		return 0
+	}
+	stock, had := stockBefore(), laptops()
 	d = must(c.DraftEquipment("pavel.intern", domain.EquipmentDetails{Action: "return", Item: "mbp-14", Reason: "конец стажировки"}))
+	twice := must(c.DraftEquipment("pavel.intern", domain.EquipmentDetails{Action: "return", Item: "mbp-14", Reason: "еще раз"}))
 	if r := must(c.Confirm("pavel.intern", d.Request.ID)); r.Status != domain.StatusApproved || r.Resolution == "" {
 		t.Fatalf("return = %+v", r)
+	}
+	if laptops() != had-1 || stockBefore() != stock+1 {
+		t.Fatalf("after return: laptops %d (was %d), stock %d (was %d)", laptops(), had, stockBefore(), stock)
+	}
+	if had == 1 {
+		if _, err := c.Confirm("pavel.intern", twice.Request.ID); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("second return of the same laptop: %v", err)
+		}
+		if _, err := c.DraftEquipment("pavel.intern", domain.EquipmentDetails{Action: "return", Item: "mbp-14", Reason: "x"}); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("return with nothing issued: %v", err)
+		}
 	}
 	for _, e := range []domain.EquipmentDetails{
 		{Action: "issue", Item: "nope", Reason: "x"},
@@ -382,17 +414,20 @@ func TestOnboarding(t *testing.T) {
 
 func TestKB(t *testing.T) {
 	c, _ := newCore(t)
-	hits := c.SearchKB("не подключается VPN, ошибка timeout", 5)
+	hits := c.SearchKB(context.Background(), "не подключается VPN, ошибка timeout", 5)
 	if len(hits) == 0 || hits[0].ID != "vpn-not-connecting" || len(hits) > 3 {
 		t.Fatalf("hits = %+v", hits)
 	}
-	if hits := c.SearchKB("как оформить отгул", 1); len(hits) != 1 || hits[0].ID != "day-off" {
+	if hits := c.SearchKB(context.Background(), "как оформить отгул", 1); len(hits) != 1 || hits[0].ID != "day-off" {
 		t.Fatalf("day off = %+v", hits)
 	}
-	if hits := c.SearchKB("?? ab", 3); hits != nil {
+	if hits := c.SearchKB(context.Background(), "впн тормозит", 1); len(hits) != 1 || hits[0].ID != "vpn-slow" {
+		t.Fatalf("jargon = %+v", hits)
+	}
+	if hits := c.SearchKB(context.Background(), "?? ab", 3); hits != nil {
 		t.Fatalf("empty query = %v", hits)
 	}
-	if hits := c.SearchKB("квантовая криптография", 3); len(hits) != 0 {
+	if hits := c.SearchKB(context.Background(), "квантовая криптография", 3); len(hits) != 0 {
 		t.Fatalf("nonsense = %v", hits)
 	}
 }
@@ -426,7 +461,7 @@ func TestNew_ValidatesSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if users := c.Users(); len(users) != 5 || users[0].ID != "anna.intern" {
+	if users := c.Users(); len(users) != 6 || users[0].ID != "anna.intern" {
 		t.Fatalf("users = %v", users)
 	}
 	if _, err := c.User("ghost"); !errors.Is(err, domain.ErrNotFound) {

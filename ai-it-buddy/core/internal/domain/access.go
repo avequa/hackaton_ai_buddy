@@ -62,6 +62,9 @@ func (c *Core) MyAccess(userID string) ([]Grant, []Request, error) {
 		}
 	}
 	c.mu.Unlock()
+	slices.SortFunc(grants, func(a, b Grant) int {
+		return cmp.Or(cmp.Compare(a.Service, b.Service), cmp.Compare(a.Project, b.Project))
+	})
 
 	var open []Request
 	for _, r := range c.MyRequests(userID, KindAccess) {
@@ -85,6 +88,7 @@ func (c *Core) grantLevel(userID, service, project string) string {
 
 // grant - выдает доступ (повышает уровень, если доступ уже был)
 func (c *Core) grant(userID string, a AccessDetails) {
+	c.dirty.grants[[3]string{userID, a.Service, a.Project}] = true
 	for i, g := range c.grants {
 		if g.User == userID && g.Service == a.Service && g.Project == a.Project {
 			if levelRank[a.Level] > levelRank[g.Level] {

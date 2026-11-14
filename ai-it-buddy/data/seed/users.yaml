@@ -32,6 +32,13 @@ users:
     grade: middle
     team: cabinet
     lead: olga.lead
+  - id: sergey.sre
+    name: Сергей Волков
+    role: sre
+    position: sre
+    grade: senior
+    team: platform
+    lead: olga.lead
   - id: olga.lead
     name: Ольга Новикова
     role: lead

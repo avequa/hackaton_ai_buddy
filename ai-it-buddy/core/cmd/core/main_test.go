@@ -16,6 +16,20 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil || cfg.ApprovalDelay != 5*time.Second || cfg.Addr != ":9" || cfg.DataDir != "./data" || cfg.LogFormat != "json" {
 		t.Fatalf("cfg = %+v, err = %v", cfg, err)
 	}
+	envs["DIGEST_INTERVAL"] = "weekly"
+	if _, err := loadConfig(func(k string) string { return envs[k] }); err == nil {
+		t.Fatal("bad digest interval accepted")
+	}
+	envs["DIGEST_INTERVAL"] = ""
+	envs["RADAR_WINDOW"] = "-1s"
+	if _, err := loadConfig(func(k string) string { return envs[k] }); err == nil {
+		t.Fatal("bad radar window accepted")
+	}
+	envs["RADAR_WINDOW"] = ""
+	envs["RADAR_SERVICES"] = " vpn , ,gitlab"
+	if c, _ := loadConfig(func(k string) string { return envs[k] }); len(c.RadarServices) != 2 || c.RadarEvery != 10*time.Second {
+		t.Fatalf("radar cfg = %+v", c)
+	}
 	envs["APPROVAL_DELAY"] = "soon"
 	if _, err := loadConfig(func(k string) string { return envs[k] }); err == nil {
 		t.Fatal("bad delay accepted")
@@ -44,7 +58,8 @@ func TestRun(t *testing.T) {
 	done := make(chan error, 1)
 	cfg := config{
 		Addr: addr, DataDir: "../../../data", JWTSecret: "test-secret-test-secret-test-secret", AgentURL: "http://127.0.0.1:1",
-		ApprovalDelay: time.Second, LogFormat: "text",
+		ApprovalDelay: time.Second, DigestEvery: 500 * time.Millisecond, LogFormat: "text",
+		RadarURL: "http://127.0.0.1:1/mcp", RadarServices: []string{"vpn"}, RadarEvery: 200 * time.Millisecond, RadarWindow: time.Second,
 	}
 	go func() { done <- run(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil))) }()
 
@@ -74,9 +89,10 @@ func TestRun(t *testing.T) {
 		t.Fatal("healthcheck must fail without a server")
 	}
 	for name, c := range map[string]config{
-		"data":   {Addr: addr, DataDir: "/nope", JWTSecret: cfg.JWTSecret, ApprovalDelay: time.Second},
-		"secret": {Addr: addr, DataDir: "../../../data", JWTSecret: "short", ApprovalDelay: time.Second},
-		"listen": {Addr: "256.0.0.1:1", DataDir: "../../../data", JWTSecret: cfg.JWTSecret, ApprovalDelay: time.Second},
+		"data":   {Addr: addr, DataDir: "/nope", JWTSecret: cfg.JWTSecret, ApprovalDelay: time.Second, DigestEvery: time.Hour},
+		"secret": {Addr: addr, DataDir: "../../../data", JWTSecret: "short", ApprovalDelay: time.Second, DigestEvery: time.Hour},
+		"radar":  {Addr: addr, DataDir: "../../../data", JWTSecret: cfg.JWTSecret, ApprovalDelay: time.Second, DigestEvery: time.Hour, RadarURL: "http://x", RadarServices: []string{"mail"}},
+		"listen": {Addr: "256.0.0.1:1", DataDir: "../../../data", JWTSecret: cfg.JWTSecret, ApprovalDelay: time.Second, DigestEvery: time.Hour},
 	} {
 		if err := run(context.Background(), c, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
 			t.Errorf("%s: no error", name)

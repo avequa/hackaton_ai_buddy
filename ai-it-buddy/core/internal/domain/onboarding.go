@@ -105,6 +105,7 @@ func (c *Core) CompleteStep(actorID, internID, stepID string) (StepView, error) 
 	}
 	ev := Event{At: c.opts.Now(), Status: "done", By: actor.Name}
 	c.stepsDone[intern.ID][step.ID] = ev
+	c.dirty.steps[[2]string{intern.ID, step.ID}] = true
 	return StepView{Step: step, Done: true, DoneBy: actor.Name, Hint: confirmHints[step.Confirm]}, nil
 }
 
@@ -159,8 +160,11 @@ func (c *Core) OnboardingFor(viewerID, internID string) (Onboarding, error) {
 	}
 	intern, ok := c.users[internID]
 	c.mu.Unlock()
-	if !ok || (viewer.ID != intern.ID && intern.Mentor != viewer.ID && intern.Lead != viewer.ID) {
+	if !ok {
 		return Onboarding{}, fmt.Errorf("user %q: %w", internID, ErrNotFound)
+	}
+	if viewer.ID != intern.ID && intern.Mentor != viewer.ID && intern.Lead != viewer.ID {
+		return Onboarding{}, fmt.Errorf("user %q: %w", internID, ErrForeign)
 	}
 	return c.Onboarding(internID)
 }

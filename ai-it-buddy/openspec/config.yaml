@@ -1,0 +1,18 @@
+schema: spec-driven
+
+context: |
+  Language: ru
+  All artifacts must be written in ru.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Проект: AI IT-Buddy (Hack&Change 2026, кейс Авито) - помощник стажера по доступам, IT-поддержке,
+  оборудованию и пути адаптации. Ядро на Go (HTTP API + MCP-серверы имитаций корпоративных сервисов, Postgres),
+  агент на Python (LangGraph) работает только через MCP-инструменты ядра, модели - через собственный LLM-шлюз.
+  Данные синтетические. Права и согласования проверяет сервер, а не модель.
+
+rules:
+  specs:
+    - Требование описывает наблюдаемое поведение API или MCP-инструмента, а не устройство кода
+    - Каждое требование с проверкой прав содержит сценарий отказа
+  tasks:
+    - Каждая задача заканчивается тестом (go test, pytest или promtool)

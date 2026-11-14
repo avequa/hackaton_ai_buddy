@@ -202,6 +202,59 @@
       }
     },
     {
+      "id": 18,
+      "type": "stat",
+      "title": "Объявлено инцидентов",
+      "description": "Сбои, о которых SRE сразу предупредили всех пользователей в чате.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 7,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "((sum(increase(buddy_incidents_total{event=\"opened\"}[$__range]))) or vector(0))",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
       "id": 5,
       "type": "stat",
       "title": "Дубликатов тикетов не создано",
@@ -271,7 +324,7 @@
       "id": 7,
       "type": "stat",
       "title": "Попыток выйти за права",
-      "description": "Чужая заявка, чужой шаг адаптации, неверный или чужой токен. Права проверяет сервер, модель обойти их не может.",
+      "description": "Чужая заявка, действие не по роли, попытка уговорить помощника обойти правила. Все они заблокированы сервером, наставник получает уведомление.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -279,13 +332,13 @@
       "gridPos": {
         "x": 0,
         "y": 7,
-        "w": 6,
+        "w": 4,
         "h": 5
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "((sum(increase(buddy_access_denied_total[$__range]))) or vector(0))",
+          "expr": "((sum(increase(buddy_security_events_total[$__range]))) or vector(0))",
           "instant": true,
           "datasource": {
             "type": "prometheus",
@@ -334,9 +387,9 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 6,
+        "x": 4,
         "y": 7,
-        "w": 6,
+        "w": 4,
         "h": 5
       },
       "targets": [
@@ -380,8 +433,8 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "Попытки выйти за права по месту",
-      "description": "Где именно сработала проверка прав: mcp_token - неверный токен агента, ui_* - запросы из интерфейса.",
+      "title": "Попытки выйти за права по видам",
+      "description": "foreign_object - чужие данные, forbidden - действие не по роли, chat_attack - попытка обойти правила через чат.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -395,8 +448,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (surface) (increase(buddy_access_denied_total[5m]))",
-          "legendFormat": "{{surface}}",
+          "expr": "sum by (kind) (increase(buddy_security_events_total[5m]))",
+          "legendFormat": "{{kind}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -788,6 +841,343 @@
         "tooltip": {
           "mode": "multi"
         }
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Сбои сервисов и надежность",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Доля 5xx по логам NGINX (incident-radar)",
+      "description": "Что видит incident-radar в последнем окне лога. Выше 20% две проверки подряд - ядро открывает инцидент и пишет всем в чат; ниже 5% три проверки подряд - закрывает.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "buddy_radar_error_rate",
+          "legendFormat": "{{service}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Проверки радара",
+      "description": "error - радар недоступен: автоматические инциденты на паузе, открытые не закрываются сами.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 38,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service, result) (increase(buddy_radar_checks_total[5m]))",
+          "legendFormat": "{{service}} {{result}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Изменений ждут записи в Postgres",
+      "description": "Ядро отвечает из памяти и раз в секунду пишет изменения в базу. Растет - база недоступна, изменения копятся.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "((sum(buddy_store_pending_changes)) or vector(0))",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "Секунд с последней записи",
+      "description": "Норма - 0-2 секунды.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 46,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(buddy_store_last_success_timestamp_seconds)",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 24,
+      "type": "stat",
+      "title": "Ошибок записи в Postgres",
+      "description": "Неудачные пачки не теряются: уходят в следующую запись.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "((sum(increase(buddy_store_flushes_total{result=\"error\"}[$__range]))) or vector(0))",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "Поиск по базе знаний без Postgres",
+      "description": "Сколько раз поиск ушел в память из-за ошибки базы (без морфологии, но помощник отвечает).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 46,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "((sum(increase(buddy_kb_fallback_total[$__range]))) or vector(0))",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
       }
     }
   ],

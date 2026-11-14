@@ -16,7 +16,7 @@ class Settings:
     llm_model: str = "main"
     core_mcp_url: str = "http://core:8080/mcp"
     llm_timeout: float = 90.0
-    max_steps: int = 12  # agent + tool steps per turn: protects the free LLM quota from loops
+    max_steps: int = 18  # graph steps per turn (agent, tools, guard): about 8 LLM calls max, protects the free quota
     history_messages: int = 16  # how many recent messages of the thread go to the model
 
     @classmethod

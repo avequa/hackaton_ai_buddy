@@ -1,6 +1,8 @@
 package mcpapi
 
 import (
+	"context"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/avequa/ai-it-buddy/core/internal/domain"
@@ -51,7 +53,7 @@ func (a *API) addAccess(s *mcp.Server) {
 		Description: "Corporate services catalog: what each service is for, typical tasks, available access levels and " +
 			"projects with the user's current access. Use it to map a task description to the services that need access.",
 		Annotations: readOnly,
-	}, call(a, "access", "list_services", func(user string, _ EmptyInput) (ServicesOutput, string, error) {
+	}, call(a, "access", "list_services", func(_ context.Context, user string, _ EmptyInput) (ServicesOutput, string, error) {
 		svcs, err := a.core.Services(user)
 		return ServicesOutput{Services: svcs}, "ok", err
 	}))
@@ -60,7 +62,7 @@ func (a *API) addAccess(s *mcp.Server) {
 		Name:        "list_my_access",
 		Description: "Access already granted to the user and access requests that are still open.",
 		Annotations: readOnly,
-	}, call(a, "access", "list_my_access", func(user string, _ EmptyInput) (MyAccessOutput, string, error) {
+	}, call(a, "access", "list_my_access", func(_ context.Context, user string, _ EmptyInput) (MyAccessOutput, string, error) {
 		grants, open, err := a.core.MyAccess(user)
 		out := MyAccessOutput{Grants: grants, OpenRequests: []RequestBrief{}}
 		for _, r := range open {
@@ -75,12 +77,13 @@ func (a *API) addAccess(s *mcp.Server) {
 			"role policy. It does not submit: the user confirms in the UI. outcome already_granted or already_requested " +
 			"means nothing new was created.",
 		Annotations: draftOnly,
-	}, call(a, "access", "draft_access_request", func(user string, in DraftAccessInput) (DraftOutput, string, error) {
+	}, call(a, "access", "draft_access_request", func(_ context.Context, user string, in DraftAccessInput) (DraftOutput, string, error) {
 		res, err := a.core.DraftAccess(user, domain.AccessDetails(in))
 		if err != nil {
 			return DraftOutput{}, "", err
 		}
 		out := DraftOutput{Outcome: res.Outcome, CurrentLevel: res.Level}
+		a.core.TrackTopic(user, "Доступ: "+in.Service)
 		if res.Request != nil {
 			b := brief(*res.Request)
 			out.Request = &b
@@ -124,7 +127,7 @@ func (a *API) addHelpdesk(s *mcp.Server) {
 		Name:        "check_service_health",
 		Description: "Is there a known incident for the service right now. Call it before troubleshooting and before a ticket.",
 		Annotations: readOnly,
-	}, call(a, "helpdesk", "check_service_health", func(_ string, in HealthInput) (domain.Health, string, error) {
+	}, call(a, "helpdesk", "check_service_health", func(_ context.Context, _ string, in HealthInput) (domain.Health, string, error) {
 		h := a.core.ServiceHealth(in.Service)
 		return h, h.Status, nil
 	}))
@@ -133,11 +136,15 @@ func (a *API) addHelpdesk(s *mcp.Server) {
 		Name:        "search_kb",
 		Description: "Searches internal how-to guides (test instructions). Returns up to 3 docs with text; cite the doc title.",
 		Annotations: readOnly,
-	}, call(a, "helpdesk", "search_kb", func(_ string, in KBInput) (KBOutput, string, error) {
-		docs := a.core.SearchKB(in.Query, 3)
+	}, call(a, "helpdesk", "search_kb", func(ctx context.Context, user string, in KBInput) (KBOutput, string, error) {
+		docs := a.core.SearchKB(ctx, in.Query, 3)
 		out := KBOutput{Docs: docs}
 		outcome := "found"
+		if len(docs) > 0 {
+			a.core.TrackTopic(user, docs[0].Title)
+		}
 		if len(docs) == 0 {
+			a.core.TrackKBMiss(user)
 			out.Docs = []domain.DocHit{}
 			out.Note = "Nothing found. Do not invent instructions: suggest asking the mentor."
 			outcome = "not_found_in_kb"
@@ -150,11 +157,12 @@ func (a *API) addHelpdesk(s *mcp.Server) {
 		Description: "Creates a DRAFT support ticket with the troubleshooting history. If the service has a known incident, " +
 			"no ticket is created (outcome known_incident). The user confirms the draft in the UI.",
 		Annotations: draftOnly,
-	}, call(a, "helpdesk", "draft_ticket", func(user string, in TicketInput) (DraftOutput, string, error) {
+	}, call(a, "helpdesk", "draft_ticket", func(_ context.Context, user string, in TicketInput) (DraftOutput, string, error) {
 		res, err := a.core.DraftTicket(user, domain.TicketDetails(in))
 		if err != nil {
 			return DraftOutput{}, "", err
 		}
+		a.core.TrackTopic(user, "Проблема: "+in.Service)
 		out := DraftOutput{Outcome: res.Outcome, Incident: res.Incident}
 		if res.Request != nil {
 			b := brief(*res.Request)
@@ -189,7 +197,7 @@ func (a *API) addInventory(s *mcp.Server) {
 		Name:        "list_equipment",
 		Description: "Warehouse stock and the user's current equipment versus the role norm.",
 		Annotations: readOnly,
-	}, call(a, "inventory", "list_equipment", func(user string, in EquipmentInput) (EquipmentOutput, string, error) {
+	}, call(a, "inventory", "list_equipment", func(_ context.Context, user string, in EquipmentInput) (EquipmentOutput, string, error) {
 		items, holdings, err := a.core.Equipment(user, in.Category)
 		return EquipmentOutput{Items: items, Holdings: holdings}, "ok", err
 	}))
@@ -199,11 +207,12 @@ func (a *API) addInventory(s *mcp.Server) {
 		Description: "Creates a DRAFT equipment request. outcome out_of_stock returns alternatives in stock and a hint " +
 			"about the waitlist or purchase. The user confirms the draft in the UI.",
 		Annotations: draftOnly,
-	}, call(a, "inventory", "draft_equipment_request", func(user string, in DraftEquipmentInput) (DraftOutput, string, error) {
+	}, call(a, "inventory", "draft_equipment_request", func(_ context.Context, user string, in DraftEquipmentInput) (DraftOutput, string, error) {
 		res, err := a.core.DraftEquipment(user, domain.EquipmentDetails{Action: in.Action, Item: in.Item, Reason: in.Reason})
 		if err != nil {
 			return DraftOutput{}, "", err
 		}
+		a.core.TrackTopic(user, "Оборудование")
 		out := DraftOutput{Outcome: res.Outcome, Alternatives: res.Alternatives, Hint: res.Hint}
 		if res.Request != nil {
 			b := brief(*res.Request)
@@ -229,7 +238,8 @@ func (a *API) addOnboarding(s *mcp.Server) {
 		Name:        "get_onboarding",
 		Description: "The intern's onboarding path by week: steps, which are done, who confirms each step and the next step.",
 		Annotations: readOnly,
-	}, call(a, "onboarding", "get_onboarding", func(user string, _ EmptyInput) (OnboardingOutput, string, error) {
+	}, call(a, "onboarding", "get_onboarding", func(_ context.Context, user string, _ EmptyInput) (OnboardingOutput, string, error) {
+		a.core.TrackTopic(user, "План адаптации")
 		ob, err := a.core.Onboarding(user)
 		return OnboardingOutput{Done: ob.Done, Total: ob.Total, Next: ob.Next, Steps: ob.Steps}, "ok", err
 	}))

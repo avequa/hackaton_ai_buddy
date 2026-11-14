@@ -45,8 +45,31 @@ type Config struct {
 	Metrics   *metrics.Metrics
 	Logger    *slog.Logger
 	DemoToken string // включает /api/demo/*; пустой - демо-ручки выключены
+	// Ready - состояние зависимостей для /readyz; nil - ядро работает только в памяти
+	Ready func(ctx context.Context) Readiness
 	// AllowedOrigins - откуда браузеру можно ходить в API с другого origin (dev-сервер фронтенда), например http://localhost:5173
 	AllowedOrigins []string
+}
+
+// Readiness - ответ /readyz. Ядро отвечает и при недоступной базе (работает из памяти и дописывает позже),
+// поэтому degraded - это 200, а не 503: снимать ядро с трафика незачем, нужно чинить базу.
+type Readiness struct {
+	Status      string     `json:"status"`  // ok | degraded
+	Storage     string     `json:"storage"` // postgres | memory
+	Pending     int        `json:"pending_changes"`
+	LastFlushAt *time.Time `json:"last_flush_at,omitempty"`
+	Error       string     `json:"error,omitempty"`
+}
+
+// readyz - готовность и состояние хранилища
+func (a *api) readyz(w http.ResponseWriter, r *http.Request) {
+	st := Readiness{Status: "ok", Storage: "memory"}
+	if a.Ready != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		st = a.Ready(ctx)
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // Agent - Python-агент (LangGraph): один ход диалога
@@ -86,6 +109,7 @@ func New(cfg Config) (http.Handler, error) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })
+	mux.HandleFunc("GET /readyz", a.readyz)
 	mux.Handle("GET /metrics", cfg.Metrics.Handler())
 	for _, name := range mcpapi.Servers {
 		h, err := cfg.MCP.Handler(name, cfg.Issuer)
@@ -115,6 +139,16 @@ func New(cfg Config) (http.Handler, error) {
 	mux.Handle("POST /api/approvals/{id}/{decision}", a.auth(a.decide))
 	mux.Handle("POST /api/mentees/{user}/steps/{step}/complete", a.auth(a.completeMenteeStep))
 	mux.Handle("POST /api/chat", a.auth(a.chat))
+	mux.Handle("GET /api/notifications", a.auth(a.notifications))
+	mux.Handle("POST /api/notifications/read", a.auth(a.readNotifications))
+	mux.Handle("GET /api/incidents", a.auth(a.incidents))
+	mux.Handle("POST /api/incidents", a.auth(a.openIncident))
+	mux.Handle("POST /api/incidents/{id}/resolve", a.auth(a.resolveIncident))
+	mux.Handle("POST /api/onboarding/starter-pack", a.auth(a.starterPack))
+	mux.Handle("POST /api/requests/confirm-batch", a.auth(a.confirmBatch))
+	mux.Handle("GET /api/mentees/{user}/digest", a.auth(a.digest))
+	mux.Handle("GET /api/security/events", a.auth(a.securityEvents))
+	mux.HandleFunc("POST /api/demo/digests", a.demoDigests)
 	mux.HandleFunc("POST /api/demo/incidents", a.demoIncident)
 
 	protection := http.NewCrossOriginProtection()
@@ -226,6 +260,7 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "cannot issue token")
 		return
 	}
+	a.Core.OfferStarterPack(u.ID)
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u, "expires_in": int(SessionTTL.Seconds())})
 }
 
@@ -237,37 +272,37 @@ func (a *api) me(w http.ResponseWriter, _ *http.Request, u domain.User) {
 // onboarding - путь адаптации текущего пользователя
 func (a *api) onboarding(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	ob, err := a.Core.Onboarding(u.ID)
-	a.respond(w, ob, err, "")
+	a.respond(w, u, ob, err, "")
 }
 
 // access - выданные доступы и открытые заявки на доступ (страница "Мои доступы")
 func (a *api) access(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	grants, open, err := a.Core.MyAccess(u.ID)
-	a.respond(w, map[string]any{"grants": nonNil(grants), "open_requests": nonNil(open)}, err, "")
+	a.respond(w, u, map[string]any{"grants": nonNil(grants), "open_requests": nonNil(open)}, err, "")
 }
 
 // mentees - стажеры наставника или руководителя с прогрессом
 func (a *api) mentees(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	list, err := a.Core.Mentees(u.ID)
-	a.respond(w, map[string]any{"mentees": nonNil(list)}, err, "")
+	a.respond(w, u, map[string]any{"mentees": nonNil(list)}, err, "")
 }
 
 // menteeOnboarding - путь адаптации стажера для его наставника или руководителя
 func (a *api) menteeOnboarding(w http.ResponseWriter, r *http.Request, u domain.User) {
 	ob, err := a.Core.OnboardingFor(u.ID, r.PathValue("user"))
-	a.respond(w, ob, err, "mentee_onboarding")
+	a.respond(w, u, ob, err, "mentee_onboarding")
 }
 
 // completeOwnStep - стажер отмечает свой шаг
 func (a *api) completeOwnStep(w http.ResponseWriter, r *http.Request, u domain.User) {
 	step, err := a.Core.CompleteStep(u.ID, u.ID, r.PathValue("step"))
-	a.respond(w, step, err, "onboarding_step")
+	a.respond(w, u, step, err, "onboarding_step")
 }
 
 // completeMenteeStep - наставник или руководитель отмечает шаг стажера
 func (a *api) completeMenteeStep(w http.ResponseWriter, r *http.Request, u domain.User) {
 	step, err := a.Core.CompleteStep(u.ID, r.PathValue("user"), r.PathValue("step"))
-	a.respond(w, step, err, "onboarding_step")
+	a.respond(w, u, step, err, "onboarding_step")
 }
 
 // requests - заявки пользователя (?kind=access|helpdesk|equipment)
@@ -278,7 +313,7 @@ func (a *api) requests(w http.ResponseWriter, r *http.Request, u domain.User) {
 // request - одна заявка с историей
 func (a *api) request(w http.ResponseWriter, r *http.Request, u domain.User) {
 	req, err := a.Core.Request(u.ID, r.PathValue("id"))
-	a.respond(w, req, err, "request_view")
+	a.respond(w, u, req, err, "request_view")
 }
 
 // confirm - человек подтверждает черновик
@@ -288,7 +323,7 @@ func (a *api) confirm(w http.ResponseWriter, r *http.Request, u domain.User) {
 		a.Metrics.Confirmed.WithLabelValues(req.Kind).Inc()
 		a.Metrics.Requests.WithLabelValues(req.Kind, req.Status).Inc()
 	}
-	a.respond(w, req, err, "confirm")
+	a.respond(w, u, req, err, "confirm")
 }
 
 // cancel - человек отменяет заявку
@@ -297,7 +332,7 @@ func (a *api) cancel(w http.ResponseWriter, r *http.Request, u domain.User) {
 	if err == nil {
 		a.Metrics.Requests.WithLabelValues(req.Kind, req.Status).Inc()
 	}
-	a.respond(w, req, err, "cancel")
+	a.respond(w, u, req, err, "cancel")
 }
 
 // approvals - очередь наставника: заявки "не по роли" его стажеров
@@ -322,7 +357,7 @@ func (a *api) decide(w http.ResponseWriter, r *http.Request, u domain.User) {
 	if err == nil {
 		a.Metrics.Requests.WithLabelValues(req.Kind, req.Status).Inc()
 	}
-	a.respond(w, req, err, "approval")
+	a.respond(w, u, req, err, "approval")
 }
 
 // chat - один ход диалога: BFF выдает агенту короткий MCP-токен пользователя и возвращает ответ с черновиками
@@ -341,6 +376,11 @@ func (a *api) chat(w http.ResponseWriter, r *http.Request, u domain.User) {
 	}
 	if in.ThreadID == "" {
 		in.ThreadID = "default"
+	}
+	if found := a.Core.ScreenChat(u.ID, in.Message); len(found) > 0 {
+		a.Metrics.Security.WithLabelValues(domain.SecChat).Inc()
+		a.Logger.Warn("security event", slog.String("user", u.ID), slog.String("kind", domain.SecChat),
+			slog.String("detail", strings.Join(found, "; ")))
 	}
 	if a.Agent == nil {
 		writeError(w, http.StatusServiceUnavailable, "agent is not configured")
@@ -375,7 +415,7 @@ func (a *api) chat(w http.ResponseWriter, r *http.Request, u domain.User) {
 
 // demoIncident - включить или снять инцидент сервиса для демонстрации (вместо мониторинга)
 func (a *api) demoIncident(w http.ResponseWriter, r *http.Request) {
-	if a.DemoToken == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Demo-Token")), []byte(a.DemoToken)) != 1 {
+	if !a.demoAllowed(r) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -391,14 +431,154 @@ func (a *api) demoIncident(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "service is required")
 		return
 	}
-	writeJSON(w, http.StatusOK, a.Core.SetIncident(in.Service, in.Title, in.Active))
+	h := a.Core.SetIncident(in.Service, in.Title, in.Active)
+	if in.Active {
+		a.Metrics.Incidents.WithLabelValues("opened").Inc()
+	} else {
+		a.Metrics.Incidents.WithLabelValues("resolved").Inc()
+	}
+	writeJSON(w, http.StatusOK, h)
 }
 
-// respond - ответ по результату операции домена; запрещенные действия попадают в метрику обхода прав
-func (a *api) respond(w http.ResponseWriter, v any, err error, surface string) {
+// demoDigests - разослать сводки наставникам сейчас (в проде - раз в неделю по крону)
+func (a *api) demoDigests(w http.ResponseWriter, r *http.Request) {
+	if !a.demoAllowed(r) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"sent": a.Core.SendDigests()})
+}
+
+// demoAllowed - демо-ручки включены и токен верный
+func (a *api) demoAllowed(r *http.Request) bool {
+	return a.DemoToken != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Demo-Token")), []byte(a.DemoToken)) == 1
+}
+
+// notifications - лента уведомлений для окна чата: ?after=<последний полученный id>, опрашивать раз в 3-5 с
+func (a *api) notifications(w http.ResponseWriter, r *http.Request, u domain.User) {
+	var after int64
+	if v := r.URL.Query().Get("after"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "after must be a non-negative integer")
+			return
+		}
+		after = n
+	}
+	list := nonNil(a.Core.Notifications(u.ID, after))
+	unread := 0
+	for _, n := range a.Core.Notifications(u.ID, 0) {
+		if !n.Read {
+			unread++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"notifications": list, "unread": unread})
+}
+
+// readNotifications - отметить прочитанными все уведомления до up_to включительно
+func (a *api) readNotifications(w http.ResponseWriter, r *http.Request, u domain.User) {
+	var in struct {
+		UpTo int64 `json:"up_to"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"marked": a.Core.MarkRead(u.ID, in.UpTo)})
+}
+
+// incidents - открытые инциденты и закрытые за сутки (баннер в интерфейсе)
+func (a *api) incidents(w http.ResponseWriter, _ *http.Request, _ domain.User) {
+	writeJSON(w, http.StatusOK, map[string]any{"incidents": nonNil(a.Core.Incidents())})
+}
+
+// openIncident - SRE объявляет сбой: уведомление всем сразу
+func (a *api) openIncident(w http.ResponseWriter, r *http.Request, u domain.User) {
+	var in struct {
+		Service string `json:"service"`
+		Title   string `json:"title"`
+		Message string `json:"message"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	inc, err := a.Core.OpenIncident(u.ID, in.Service, in.Title, in.Message)
+	if err == nil {
+		a.Metrics.Incidents.WithLabelValues("opened").Inc()
+	}
+	a.respond(w, u, inc, err, "incident")
+}
+
+// resolveIncident - SRE закрывает сбой
+func (a *api) resolveIncident(w http.ResponseWriter, r *http.Request, u domain.User) {
+	inc, err := a.Core.ResolveIncident(u.ID, r.PathValue("id"))
+	if err == nil {
+		a.Metrics.Incidents.WithLabelValues("resolved").Inc()
+	}
+	a.respond(w, u, inc, err, "incident")
+}
+
+// starterPack - черновики стандартных доступов стажера по роли и команде
+func (a *api) starterPack(w http.ResponseWriter, _ *http.Request, u domain.User) {
+	items, err := a.Core.StarterPack(u.ID)
+	var drafts []string
+	for _, it := range items {
+		if it.Outcome == "draft_created" {
+			drafts = append(drafts, it.Request.ID)
+		}
+	}
+	a.respond(w, u, map[string]any{"items": nonNil(items), "draft_ids": nonNil(drafts)}, err, "")
+}
+
+// confirmBatch - подтвердить несколько своих черновиков одной кнопкой
+func (a *api) confirmBatch(w http.ResponseWriter, r *http.Request, u domain.User) {
+	var in struct {
+		IDs []string `json:"ids"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if len(in.IDs) == 0 || len(in.IDs) > 20 {
+		writeError(w, http.StatusBadRequest, "ids: 1..20 request ids")
+		return
+	}
+	results := a.Core.ConfirmMany(u.ID, in.IDs)
+	for _, res := range results {
+		switch {
+		case res.Request != nil:
+			a.Metrics.Confirmed.WithLabelValues(res.Request.Kind).Inc()
+			a.Metrics.Requests.WithLabelValues(res.Request.Kind, res.Request.Status).Inc()
+		case errors.Is(res.Err(), domain.ErrForeign):
+			a.security(u.ID, domain.SecForeign, surfaceText["confirm"])
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// digest - сводка по стажеру для наставника или руководителя
+func (a *api) digest(w http.ResponseWriter, r *http.Request, u domain.User) {
+	d, err := a.Core.Digest(u.ID, r.PathValue("user"))
+	a.respond(w, u, d, err, "digest")
+}
+
+// securityEvents - попытки выйти за права у стажеров наставника или руководителя
+func (a *api) securityEvents(w http.ResponseWriter, _ *http.Request, u domain.User) {
+	writeJSON(w, http.StatusOK, map[string]any{"events": nonNil(a.Core.SecurityEvents(u.ID))})
+}
+
+// respond - ответ по результату операции домена. Попытки открыть чужое или действовать не по роли
+// попадают в метрику и в события безопасности (наставник и руководитель получают уведомление).
+func (a *api) respond(w http.ResponseWriter, u domain.User, v any, err error, surface string) {
 	if err == nil {
 		writeJSON(w, http.StatusOK, v)
 		return
+	}
+	switch {
+	case errors.Is(err, domain.ErrForeign):
+		a.security(u.ID, domain.SecForeign, surfaceText[surface])
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	case errors.Is(err, domain.ErrForbidden) && surface != "":
+		a.security(u.ID, domain.SecForbidden, surfaceText[surface]+": "+err.Error())
 	}
 	code := http.StatusInternalServerError
 	switch {
@@ -411,10 +591,29 @@ func (a *api) respond(w http.ResponseWriter, v any, err error, surface string) {
 	case errors.Is(err, domain.ErrConflict):
 		code = http.StatusConflict
 	}
-	if surface != "" && (code == http.StatusNotFound || code == http.StatusForbidden) {
+	if surface != "" && code == http.StatusForbidden {
 		a.Metrics.Denied.WithLabelValues("ui_" + surface).Inc()
 	}
 	writeError(w, code, err.Error())
+}
+
+// surfaceText - что пытался сделать пользователь (для уведомления наставнику)
+var surfaceText = map[string]string{
+	"request_view": "открыть чужую заявку", "confirm": "подтвердить чужую заявку", "cancel": "отменить чужую заявку",
+	"approval": "решить чужую заявку на согласовании", "onboarding_step": "отметить шаг адаптации не по роли",
+	"mentee_onboarding": "посмотреть план чужого стажера", "digest": "посмотреть сводку чужого стажера",
+	"incident": "объявить или закрыть инцидент без роли SRE",
+}
+
+// security - событие безопасности: метрика, лог, уведомление наставнику
+func (a *api) security(userID, kind, detail string) {
+	ev, alerted := a.Core.RecordSecurity(userID, kind, detail)
+	a.Metrics.Security.WithLabelValues(kind).Inc()
+	if kind == domain.SecForeign {
+		a.Metrics.Denied.WithLabelValues("ui_foreign").Inc()
+	}
+	a.Logger.Warn("security event", slog.String("user", userID), slog.String("kind", kind),
+		slog.String("detail", ev.Detail), slog.Bool("mentor_notified", alerted))
 }
 
 // nonNil - пустой список в JSON как [], а не null

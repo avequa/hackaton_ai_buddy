@@ -12,7 +12,7 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Users) != 5 || len(s.Services) != 6 || len(s.Steps) != 11 || len(s.Docs) != 7 || len(s.Items) == 0 || len(s.Roles) == 0 {
+	if len(s.Users) != 6 || len(s.Services) != 6 || len(s.Steps) != 11 || len(s.Docs) != 7 || len(s.Items) == 0 || len(s.Roles) == 0 {
 		t.Fatalf("seed counts: users %d services %d steps %d docs %d", len(s.Users), len(s.Services), len(s.Steps), len(s.Docs))
 	}
 	for _, d := range s.Docs {

@@ -44,11 +44,8 @@ func (c *Core) Equipment(userID, category string) ([]ItemView, []Holding, error)
 	for cat, n := range norm {
 		byCat[cat] = &Holding{Category: cat, Norm: n}
 	}
-	for _, is := range c.issued {
-		if is.User != u.ID {
-			continue
-		}
-		it := c.items[is.Item]
+	for _, id := range c.heldItems(u.ID) {
+		it := c.items[id]
 		h, ok := byCat[it.Category]
 		if !ok {
 			h = &Holding{Category: it.Category}
@@ -78,12 +75,36 @@ type EquipmentDraft struct {
 // countIssued - сколько оборудования категории уже у пользователя
 func (c *Core) countIssued(userID, category string) int {
 	n := 0
-	for _, is := range c.issued {
-		if is.User == userID && c.items[is.Item].Category == category {
+	for _, id := range c.heldItems(userID) {
+		if c.items[id].Category == category {
 			n++
 		}
 	}
 	return n
+}
+
+// heldItems - что сейчас числится за сотрудником: выдачи минус возвраты. Возврат снимает ту же позицию,
+// а если ее нет (вернули другую модель той же категории) - первую выданную позицию категории.
+func (c *Core) heldItems(userID string) []string {
+	var held []string
+	for _, is := range c.issued {
+		if is.User != userID {
+			continue
+		}
+		if !is.Returned {
+			held = append(held, is.Item)
+			continue
+		}
+		i := slices.Index(held, is.Item)
+		if i < 0 {
+			cat := c.items[is.Item].Category
+			i = slices.IndexFunc(held, func(id string) bool { return c.items[id].Category == cat })
+		}
+		if i >= 0 {
+			held = slices.Delete(held, i, i+1)
+		}
+	}
+	return held
 }
 
 // DraftEquipment - черновик заявки на выдачу, замену, возврат, лист ожидания или закупку.
@@ -164,20 +185,28 @@ func (c *Core) confirmEquipment(u User, r *Request) error {
 			return fmt.Errorf("%s is out of stock now, choose another item or join the waitlist: %w", it.Model, ErrConflict)
 		}
 		it.Stock--
+		c.dirty.stock[it.ID] = true
 		if r.Equipment.Action == ActionIssue {
 			c.issued = append(c.issued, Issued{User: u.ID, Item: it.ID})
 		}
 		c.move(r, StatusApproved, "IT-склад", "позиция зарезервирована")
-		r.dueAt = c.opts.Now().Add(c.opts.ApprovalDelay)
+		r.DueAt = c.opts.Now().Add(c.opts.ApprovalDelay)
 	case ActionReturn:
-		r.Resolution = "Принеси оборудование на IT-склад, 3 этаж, с 10 до 18"
+		if c.countIssued(u.ID, it.Category) == 0 { // два черновика возврата одной вещи
+			return fmt.Errorf("nothing of category %s is issued to you anymore: %w", it.Category, ErrConflict)
+		}
+		// возврат принимается сразу: норма освобождается, позиция снова на складе
+		c.issued = append(c.issued, Issued{User: u.ID, Item: it.ID, Returned: true})
+		it.Stock++
+		c.dirty.stock[it.ID] = true
+		r.Resolution = "Принеси оборудование на IT-склад, 3 этаж, с 10 до 18. За тобой оно больше не числится"
 		c.move(r, StatusApproved, "IT-склад", r.Resolution)
 	case ActionWaitlist:
 		r.Resolution = "Ты в листе ожидания, пришлем уведомление, когда позиция появится"
 		c.move(r, StatusWaitlisted, "IT-склад", r.Resolution)
 	case ActionPurchase:
 		c.move(r, StatusInReview, u.Name, "закупка отправлена руководителю")
-		r.dueAt = c.opts.Now().Add(c.opts.ApprovalDelay)
+		r.DueAt = c.opts.Now().Add(c.opts.ApprovalDelay)
 	}
 	return nil
 }

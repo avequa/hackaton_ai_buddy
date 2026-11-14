@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,10 +14,13 @@ type Options struct {
 	// ApprovalDelay - через сколько согласующий (владелец, DevOps, поддержка, склад) принимает решение
 	ApprovalDelay time.Duration
 	Now           func() time.Time
+	// OnKBError - поиск в Postgres не удался и выполнен в памяти (для лога и метрики)
+	OnKBError func(error)
 }
 
 // Core - состояние имитаций корпоративных сервисов: Access, Helpdesk, Inventory и путь адаптации.
-// Хранится в памяти; интерфейс методов не зависит от хранилища, Postgres подключается вместо map-ов.
+// Рабочая копия живет в памяти, изменения помечаются и в фоне пишутся в Postgres (TakeChanges, Restore).
+// Так ядро отвечает быстро и не падает, если база ненадолго недоступна.
 type Core struct {
 	mu        sync.Mutex
 	opts      Options
@@ -32,6 +36,18 @@ type Core struct {
 	incidents map[string]Incident // service -> активный инцидент
 	requests  map[string]*Request
 	seq       map[string]int
+
+	incidentLog []*Incident               // все инциденты, включая закрытые
+	notes       []Notification            // лента уведомлений всех пользователей
+	noteSeq     int64                     //
+	security    []SecurityEvent           // попытки выйти за права
+	alerted     map[string]time.Time      // user|kind -> когда последний раз будили наставника (без спама)
+	activity    map[string]map[string]int // user -> тема -> сколько раз (без текста переписки)
+	kbMisses    map[string]int            // user -> сколько раз база знаний не нашла ответ
+	starter     map[string]bool           // кому уже предложили стартовый набор
+
+	dirty dirtySet   // что изменилось с последней записи в хранилище
+	kb    KBSearcher // полнотекстовый поиск в Postgres; nil - поиск в памяти
 }
 
 // idPrefix - префикс номера заявки по виду, как в настоящих системах заявок
@@ -43,7 +59,8 @@ func New(seed Seed, opts Options) (*Core, error) {
 		opts.ApprovalDelay = 20 * time.Second
 	}
 	if opts.Now == nil {
-		opts.Now = time.Now
+		// UTC: одинаково до и после перезапуска (Postgres отдает время в UTC)
+		opts.Now = func() time.Time { return time.Now().UTC() }
 	}
 	c := &Core{
 		opts:      opts,
@@ -59,6 +76,11 @@ func New(seed Seed, opts Options) (*Core, error) {
 		incidents: map[string]Incident{},
 		requests:  map[string]*Request{},
 		seq:       map[string]int{KindAccess: 1000, KindHelpdesk: 300, KindEquipment: 80},
+		alerted:   map[string]time.Time{},
+		activity:  map[string]map[string]int{},
+		kbMisses:  map[string]int{},
+		starter:   map[string]bool{},
+		dirty:     newDirtySet(),
 	}
 	for _, u := range seed.Users {
 		c.users[u.ID] = u
@@ -72,7 +94,12 @@ func New(seed Seed, opts Options) (*Core, error) {
 	}
 	for _, inc := range seed.Incidents {
 		c.incidents[inc.Service] = inc
+		logged := inc
+		c.incidentLog = append(c.incidentLog, &logged)
 	}
+	// начальное состояние из YAML не считается изменением: в память ничего писать не нужно,
+	// а пустую базу заполняет MarkAllDirty
+	c.dirty.savedIssued = len(c.issued)
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
@@ -186,6 +213,7 @@ func (c *Core) newRequest(kind string, u User, title string) *Request {
 	}
 	r.History = []Event{{At: now, Status: StatusDraft, By: "AI IT-Buddy", Note: "черновик, ждет подтверждения"}}
 	c.requests[r.ID] = r
+	c.dirty.requests[r.ID] = true
 	return r
 }
 
@@ -195,6 +223,7 @@ func (c *Core) move(r *Request, status, by, note string) {
 	r.Status = status
 	r.UpdatedAt = now
 	r.History = append(r.History, Event{At: now, Status: status, By: by, Note: note})
+	c.dirty.requests[r.ID] = true
 }
 
 // canView - заявку видит автор, его наставник и руководитель; остальным она "не найдена", чтобы не раскрывать ее существование
@@ -215,8 +244,11 @@ func (c *Core) Request(viewerID, id string) (Request, error) {
 		return Request{}, err
 	}
 	r, ok := c.requests[id]
-	if !ok || !c.canView(viewer, r) {
+	if !ok {
 		return Request{}, fmt.Errorf("request %s: %w", id, ErrNotFound)
+	}
+	if !c.canView(viewer, r) {
+		return Request{}, fmt.Errorf("request %s: %w", id, ErrForeign)
 	}
 	return *r, nil
 }
@@ -248,8 +280,11 @@ func sortRequests(rs []Request) {
 // own - заявка пользователя в нужном статусе
 func (c *Core) own(userID, id, status string) (*Request, error) {
 	r, ok := c.requests[id]
-	if !ok || r.User != userID {
+	if !ok {
 		return nil, fmt.Errorf("request %s: %w", id, ErrNotFound)
+	}
+	if r.User != userID {
+		return nil, fmt.Errorf("request %s: %w", id, ErrForeign)
 	}
 	if r.Status != status {
 		return nil, fmt.Errorf("request %s is %s, expected %s: %w", id, r.Status, status, ErrConflict)
@@ -273,6 +308,7 @@ func (c *Core) Confirm(userID, id string) (Request, error) {
 		sup := c.supervisor(u)
 		r.Approver, r.ApproverName = sup, c.name(sup)
 		c.move(r, StatusPendingMentor, u.Name, "не по роли, отправлено наставнику")
+		c.notify(sup, NoteApproval, "Нужно ваше решение", fmt.Sprintf("%s: %s. %s", u.Name, r.Title, strings.Join(r.Policy.Reasons, "; ")), r.ID)
 		return *r, nil
 	}
 
@@ -284,10 +320,10 @@ func (c *Core) Confirm(userID, id string) (Request, error) {
 			return *r, nil
 		}
 		c.move(r, StatusInReview, u.Name, "отправлено на согласование")
-		r.dueAt = now.Add(c.opts.ApprovalDelay)
+		r.DueAt = now.Add(c.opts.ApprovalDelay)
 	case KindHelpdesk:
 		c.move(r, StatusNew, u.Name, "обращение зарегистрировано")
-		r.dueAt = now.Add(c.opts.ApprovalDelay)
+		r.DueAt = now.Add(c.opts.ApprovalDelay)
 	case KindEquipment:
 		if err := c.confirmEquipment(u, r); err != nil {
 			return Request{}, err
@@ -301,8 +337,11 @@ func (c *Core) Cancel(userID, id string) (Request, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	r, ok := c.requests[id]
-	if !ok || r.User != userID {
+	if !ok {
 		return Request{}, fmt.Errorf("request %s: %w", id, ErrNotFound)
+	}
+	if r.User != userID {
+		return Request{}, fmt.Errorf("request %s: %w", id, ErrForeign)
 	}
 	if r.Final() || r.Status == StatusInProgress {
 		return Request{}, fmt.Errorf("request %s is %s and cannot be cancelled: %w", id, r.Status, ErrConflict)
@@ -330,8 +369,11 @@ func (c *Core) Decide(mentorID, id string, approve bool, comment string) (Reques
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	r, ok := c.requests[id]
-	if !ok || r.Approver != mentorID || r.Status != StatusPendingMentor {
+	if !ok || r.Status != StatusPendingMentor {
 		return Request{}, fmt.Errorf("approval %s: %w", id, ErrNotFound)
+	}
+	if r.Approver != mentorID {
+		return Request{}, fmt.Errorf("approval %s: %w", id, ErrForeign)
 	}
 	mentor := c.users[mentorID]
 	if !approve {
@@ -340,12 +382,14 @@ func (c *Core) Decide(mentorID, id string, approve bool, comment string) (Reques
 		}
 		r.Resolution = comment
 		c.move(r, StatusRejected, mentor.Name, comment)
+		c.notifyStatus(r)
 		return *r, nil
 	}
 	c.move(r, StatusInReview, mentor.Name, cmp.Or(comment, "наставник одобрил"))
 	r.Approver, r.ApproverName = c.approverAfterMentor(r)
+	c.notifyStatus(r)
 	if r.Kind != KindEquipment {
-		r.dueAt = c.opts.Now().Add(c.opts.ApprovalDelay)
+		r.DueAt = c.opts.Now().Add(c.opts.ApprovalDelay)
 		return *r, nil
 	}
 	if err := c.confirmEquipment(c.users[r.User], r); err != nil {
@@ -378,10 +422,11 @@ func (c *Core) Tick() []Request {
 	now := c.opts.Now()
 	var changed []Request
 	for _, r := range c.requests {
-		if r.dueAt.IsZero() || now.Before(r.dueAt) {
+		if r.DueAt.IsZero() || now.Before(r.DueAt) {
 			continue
 		}
-		r.dueAt = time.Time{}
+		r.DueAt = time.Time{}
+		c.dirty.requests[r.ID] = true
 		switch {
 		case r.Kind == KindAccess && r.Status == StatusInReview:
 			c.decideAccess(r)
@@ -397,6 +442,7 @@ func (c *Core) Tick() []Request {
 		default:
 			continue
 		}
+		c.notifyStatus(r)
 		changed = append(changed, *r)
 	}
 	return changed

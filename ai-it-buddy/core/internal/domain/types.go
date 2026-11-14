@@ -15,11 +15,21 @@ var (
 	ErrConflict  = errors.New("conflict")
 )
 
+// ErrForeign - объект существует, но принадлежит другому пользователю. Для клиента это обычный not found
+// (не раскрываем, что объект есть), а сервер записывает попытку как событие безопасности.
+var ErrForeign error = foreignError{}
+
+type foreignError struct{}
+
+func (foreignError) Error() string        { return "not found" }
+func (foreignError) Is(target error) bool { return target == ErrNotFound }
+
 // Роли сотрудников
 const (
 	RoleIntern = "intern"
 	RoleMentor = "mentor"
 	RoleLead   = "lead"
+	RoleSRE    = "sre"
 )
 
 // Уровни доступа по возрастанию
@@ -150,8 +160,9 @@ type Item struct {
 
 // Issued - оборудование, выданное сотруднику
 type Issued struct {
-	User string `yaml:"user"`
-	Item string `yaml:"item"`
+	User     string `yaml:"user"`
+	Item     string `yaml:"item"`
+	Returned bool   `yaml:"-"` // событие возврата: журнал выдач только дописывается
 }
 
 // StepAuto - событие, по которому шаг адаптации закрывается сам
@@ -179,10 +190,13 @@ type Doc struct {
 
 // Incident - известный сбой сервиса
 type Incident struct {
-	ID      string    `json:"id"`
-	Service string    `json:"service"`
-	Title   string    `json:"title"`
-	Since   time.Time `json:"since"`
+	ID         string     `json:"id"`
+	Service    string     `json:"service"`
+	Title      string     `json:"title"`
+	Message    string     `json:"message,omitempty"` // что делать пользователям, например "работайте через резервный шлюз"
+	Since      time.Time  `json:"since"`
+	By         string     `json:"by,omitempty"` // кто объявил: SRE, руководитель или мониторинг
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 }
 
 // Seed - начальные данные
@@ -253,7 +267,7 @@ type Request struct {
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
 	History      []Event           `json:"history"`
-	dueAt        time.Time         // когда система согласования сделает следующий шаг
+	DueAt        time.Time         `json:"-"` // когда система согласования сделает следующий шаг; хранится отдельной колонкой
 }
 
 // Final - заявка закрыта

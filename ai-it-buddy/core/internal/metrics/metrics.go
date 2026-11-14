@@ -21,6 +21,16 @@ type Metrics struct {
 	Requests     *prometheus.CounterVec   // kind, status: переходы заявок
 	Confirmed    *prometheus.CounterVec   // kind: черновики, которые человек подтвердил
 	ChatTurns    *prometheus.CounterVec   // outcome: ok, error
+	Security     *prometheus.CounterVec   // kind: foreign_object, forbidden, chat_attack
+	Incidents    *prometheus.CounterVec   // event: opened, resolved
+
+	StoreFlushes     *prometheus.CounterVec // result: ok, error - фоновая запись изменений в Postgres
+	StorePending     prometheus.Gauge       // сколько изменений еще не записано
+	StoreLastSuccess prometheus.Gauge       // unix-время последней успешной записи
+	KBFallback       prometheus.Counter     // поиск по базе знаний ушел в память из-за ошибки Postgres
+
+	RadarChecks    *prometheus.CounterVec // service, result: ok | high | no_traffic | error
+	RadarErrorRate *prometheus.GaugeVec   // service: доля 5xx в последнем окне по данным incident-radar
 }
 
 // New - регистрирует метрики
@@ -55,6 +65,30 @@ func New() *Metrics {
 		ChatTurns: f(prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "buddy_chat_turns_total", Help: "Chat turns proxied to the agent.",
 		}, []string{"outcome"})).(*prometheus.CounterVec),
+		Security: f(prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "buddy_security_events_total", Help: "Attempts to go beyond permissions, including attacks through the chat.",
+		}, []string{"kind"})).(*prometheus.CounterVec),
+		Incidents: f(prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "buddy_incidents_total", Help: "Incidents declared and resolved.",
+		}, []string{"event"})).(*prometheus.CounterVec),
+		StoreFlushes: f(prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "buddy_store_flushes_total", Help: "Background writes of changed state to Postgres.",
+		}, []string{"result"})).(*prometheus.CounterVec),
+		StorePending: f(prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "buddy_store_pending_changes", Help: "Changes kept in memory and not yet written to Postgres.",
+		})).(prometheus.Gauge),
+		StoreLastSuccess: f(prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "buddy_store_last_success_timestamp_seconds", Help: "Unix time of the last successful write to Postgres.",
+		})).(prometheus.Gauge),
+		KBFallback: f(prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "buddy_kb_fallback_total", Help: "Knowledge base searches served from memory because Postgres failed.",
+		})).(prometheus.Counter),
+		RadarChecks: f(prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "buddy_radar_checks_total", Help: "Log checks through incident-radar by result.",
+		}, []string{"service", "result"})).(*prometheus.CounterVec),
+		RadarErrorRate: f(prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "buddy_radar_error_rate", Help: "Share of 5xx in the last checked log window, 0..1.",
+		}, []string{"service"})).(*prometheus.GaugeVec),
 	}
 }
 
@@ -82,6 +116,23 @@ func (m *Metrics) Init(tools map[string][]string, outcomes, kinds, verdicts, sta
 	}
 	m.ChatTurns.WithLabelValues("ok")
 	m.ChatTurns.WithLabelValues("error")
+	for _, k := range []string{"foreign_object", "forbidden", "chat_attack"} {
+		m.Security.WithLabelValues(k)
+	}
+	m.Incidents.WithLabelValues("opened")
+	m.Incidents.WithLabelValues("resolved")
+	m.StoreFlushes.WithLabelValues("ok")
+	m.StoreFlushes.WithLabelValues("error")
+}
+
+// InitRadar - серии проверок по наблюдаемым сервисам
+func (m *Metrics) InitRadar(services []string) {
+	for _, s := range services {
+		for _, r := range []string{"ok", "high", "no_traffic", "error"} {
+			m.RadarChecks.WithLabelValues(s, r)
+		}
+		m.RadarErrorRate.WithLabelValues(s)
+	}
 }
 
 // Handler - /metrics

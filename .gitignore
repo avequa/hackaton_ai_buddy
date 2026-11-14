@@ -8,10 +8,12 @@ llm-gateway/config.yaml
 # сборка и отчеты Go
 llm-gateway/bin/
 llm-gateway/dist/
+incident-radar/bin/
 *.exe
 *.test
 *.out
-coverage.*
+coverage.html
+coverage.xml
 report.xml
 
 # Python

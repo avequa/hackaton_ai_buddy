@@ -1,0 +1,100 @@
+# Алерты AI IT-Buddy. Смотреть: http://localhost:9091/alerts
+# Проверка правил и юнит-тесты: promtool check rules alerts.yml && promtool test rules alerts_test.yml
+groups:
+  - name: core
+    rules:
+      - alert: CoreDown
+        expr: up{job="core"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Ядро не отвечает на /metrics
+          description: Чат, заявки и уведомления недоступны. Проверить docker compose ps core и логи ядра.
+
+      - alert: CoreHTTPErrors
+        expr: |
+          sum(rate(buddy_http_requests_total{code=~"5.."}[5m]))
+            / sum(rate(buddy_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Ядро отвечает 5xx на {{ $value | humanizePercentage }} запросов"
+          description: Смотреть маршрут в панели HTTP дашборда AgentOps и логи ядра.
+
+  - name: storage
+    rules:
+      - alert: PostgresWritesFailing
+        expr: sum(increase(buddy_store_flushes_total{result="error"}[2m])) > 0 and on() sum(buddy_store_pending_changes) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Изменения не пишутся в Postgres
+          description: >-
+            Ядро продолжает работать из памяти и допишет изменения, когда база вернется.
+            Если ядро перезапустить сейчас, незаписанные изменения пропадут. /readyz покажет текст ошибки.
+
+      - alert: PostgresBacklogGrowing
+        expr: buddy_store_pending_changes > 1000
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} изменений ждут записи в Postgres"
+
+      - alert: KnowledgeBaseFallback
+        expr: increase(buddy_kb_fallback_total[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: Поиск по базе знаний идет в памяти, Postgres не отвечает
+          description: Ответы помощника хуже (нет морфологии), но он работает.
+
+  - name: incidents
+    rules:
+      - alert: RadarUnavailable
+        expr: sum by (service) (increase(buddy_radar_checks_total{result="error"}[2m])) > 0
+          unless sum by (service) (increase(buddy_radar_checks_total{result!="error"}[2m])) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "incident-radar не отвечает, сбои {{ $labels.service }} автоматически не обнаруживаются"
+
+      - alert: ServiceErrorRateHigh
+        expr: buddy_radar_error_rate > 0.2
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} запросов с 5xx по логам NGINX"
+          description: Ядро уже открыло инцидент и уведомило сотрудников. Этот алерт - для дежурного SRE.
+
+  - name: assistant
+    rules:
+      - alert: ChatErrorsHigh
+        expr: |
+          sum(increase(buddy_chat_turns_total{outcome="error"}[10m]))
+            / sum(increase(buddy_chat_turns_total[10m])) > 0.3
+          and sum(increase(buddy_chat_turns_total[10m])) >= 5
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Помощник не ответил на {{ $value | humanizePercentage }} сообщений"
+          description: Обычно это лимит бесплатной модели или недоступный провайдер. Смотреть дашборд LLM-шлюза.
+
+      - alert: LLMRateLimited
+        expr: sum(increase(llm_gateway_requests_total{status="429"}[10m])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: Провайдер модели отвечает 429, дневной лимит бесплатных запросов может закончиться
+
+      - alert: LLMUpstreamFailing
+        expr: sum by (target) (increase(llm_gateway_target_failures_total[5m])) > 5
+        labels: {severity: warning}
+        annotations:
+          summary: "LLM-шлюз: {{ $value }} отказов {{ $labels.target }} за 5 минут"
+
+  - name: security
+    rules:
+      - alert: ChatAttacks
+        expr: sum(increase(buddy_security_events_total{kind="chat_attack"}[10m])) >= 3
+        labels: {severity: warning}
+        annotations:
+          summary: "Попыток обойти правила через чат за 10 минут: {{ $value | humanize }}"
+          description: Наставники уже получили уведомления. Список событий - GET /api/security/events.

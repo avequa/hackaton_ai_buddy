@@ -39,7 +39,7 @@ def make_agent(script: list[AIMessage], tokens: list[str] | None = None) -> tupl
             tokens.append(token)
         return [list_services, draft_access_request]
 
-    return Agent(Settings(max_steps=8, history_messages=6), llm_factory=lambda _: llm, tools_loader=loader), llm
+    return Agent(Settings(max_steps=12, history_messages=6), llm_factory=lambda _: llm, tools_loader=loader), llm
 
 
 def test_turn_with_tools_and_memory() -> None:
@@ -194,3 +194,57 @@ def test_http_errors_and_health() -> None:
     assert client.get("/healthz").status_code == 200
     resp = client.post("/chat", json={"message": "привет", "thread_id": "t", "token": "x"})
     assert resp.status_code == 502 and "agent failed" in resp.get_json()["error"]
+
+
+def test_guard_forces_draft_when_model_only_promises() -> None:
+    """Модель пишет «подготовил черновики», не вызвав draft_* - получает подсказку и вызывает инструмент."""
+    agent, llm = make_agent([
+        tool_call("list_services", {}),
+        AIMessage(content="Я подготовил черновики заявок. Проверьте карточки и нажмите «Подтвердить»."),
+        tool_call("draft_access_request", {"service": "grafana", "project": "payments-dashboards",
+                                           "level": "write", "justification": "алерт"}, "c2"),
+        AIMessage(content="Подготовил черновик ACC-1001: Grafana, write. Нажми «Подтвердить» в карточке."),
+    ])
+    out = asyncio.run(agent.chat("поправить алерт", "g1", "tok", USER))
+    assert out["reply"].startswith("Подготовил черновик ACC-1001")
+    assert out["tools_used"] == ["list_services", "draft_access_request"]
+    hint = llm.seen[2][-1]
+    assert isinstance(hint, HumanMessage) and "draft_access_request" in hint.content
+    # ложное обещание удалено из истории: следующий ход его не видит
+    assert all("Я подготовил черновики" not in str(m.content) for m in llm.seen[3])
+
+
+def test_guard_replaces_second_false_claim_with_honest_answer() -> None:
+    agent, _ = make_agent([
+        AIMessage(content="Заявка создана, жди."),
+        AIMessage(content="Черновик готов, нажми Подтвердить."),
+    ])
+    out = asyncio.run(agent.chat("дай доступ", "g2", "tok", USER))
+    assert out["reply"].startswith("Не получилось подготовить черновик автоматически")
+    # следующий ход начинается нормально, счетчик попыток сброшен
+    agent2, _ = make_agent([AIMessage(content="Привет! Чем помочь?")])
+    assert asyncio.run(agent2.chat("привет", "g3", "tok", USER))["reply"] == "Привет! Чем помочь?"
+
+
+def test_guard_allows_reference_to_earlier_draft() -> None:
+    agent, _ = make_agent([
+        tool_call("draft_access_request", {"service": "grafana", "project": "p", "level": "read", "justification": "x"}),
+        AIMessage(content="Подготовил черновик ACC-1001."),
+        AIMessage(content="Черновик ACC-1001 готов, нажми «Подтвердить» в карточке."),
+    ])
+    asyncio.run(agent.chat("доступ", "g4", "tok", USER))
+    out = asyncio.run(agent.chat("а что дальше?", "g4", "tok", USER))
+    assert out["reply"] == "Черновик ACC-1001 готов, нажми «Подтвердить» в карточке."
+
+
+def test_guard_helpers() -> None:
+    from buddy_agent.guard import claims_draft, drafts_in, tool_payload
+
+    assert claims_draft("Я подготовил черновики заявок на недостающие доступы")
+    assert claims_draft("Проверьте карточки заявок в интерфейсе и нажмите «Подтвердить»")
+    assert not claims_draft("Доступ к Grafana у тебя уже есть, заявка не нужна.")
+    blocks = ToolMessage(content=[{"type": "text", "text": '{"outcome":"already_requested","request":{"id":"ACC-7"}}'}],
+                         tool_call_id="x", name="draft_access_request")
+    assert drafts_in([blocks]) == ["ACC-7"]
+    assert tool_payload(ToolMessage(content="not json", tool_call_id="y")) is None
+    assert drafts_in([ToolMessage(content='{"outcome":"already_granted"}', tool_call_id="z", name="draft_access_request")]) == []

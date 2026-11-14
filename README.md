@@ -8,22 +8,29 @@
 
 ```
 ai-it-buddy/        прототип
-  core/             ядро на Go: API для интерфейса, заявки, права, MCP-серверы
+  core/             ядро на Go: API для интерфейса, заявки, права, MCP-серверы, Postgres
   agent/            агент на Python + LangGraph
+  loggen/           генератор логов NGINX для демо сбоев
   data/             сотрудники, сервисы, склад, план адаптации, база знаний
-  deploy/           конфиги LLM-шлюза, Prometheus, Grafana
+  deploy/           конфиги LLM-шлюза, Prometheus (с алертами), Grafana
   docs/             API для фронтенда, TypeScript-контракты
-  scripts/          проверка LLM и демо-сценарии
+  openspec/         спецификации поведения (OpenSpec) и архив изменений
+  scripts/          проверка LLM, демо-сценарии, покрытие
   compose.yaml      запуск всего проекта
-llm-gateway/        LLM-шлюз на Go (собирается из compose)
+llm-gateway/        LLM-шлюз на Go
+incident-radar/     разбор access-логов NGINX, MCP-сервер
+.github/workflows/  CI: линтеры, тесты, покрытие, спецификации, алерты, сборка образов
 ```
 
 Как всё связано:
 
 ```
 интерфейс -> core -> agent -> llm-gateway -> LLM (OpenRouter)
-               ^         |
-               +-- MCP --+   агент вызывает инструменты core от имени пользователя
+              | ^        |
+              | +-- MCP -+   агент вызывает инструменты core от имени пользователя
+              |
+              +-> Postgres         заявки, уведомления, база знаний
+              +-> incident-radar   раз в 10 секунд: доля 5xx в логах VPN и GitLab -> инцидент сам
 ```
 
 Подробнее про устройство: `ai-it-buddy/README.md`. API для фронтенда: `ai-it-buddy/docs/api.md`.
@@ -55,16 +62,16 @@ OPENROUTER_API_KEY=sk-or-v1-...
 docker compose up -d --build
 ```
 
-Первая сборка занимает 2–4 минуты. Проверка:
+Первая сборка занимает 3–5 минут. Проверка:
 
 ```bash
 docker compose ps                  # все сервисы running или healthy
-curl 127.0.0.1:8080/healthz        # ok
+curl 127.0.0.1:8080/readyz         # {"status":"ok","storage":"postgres",...}
 python3 scripts/check_llm.py       # модели отвечают и вызывают инструменты
 python3 scripts/demo.py access     # один сценарий целиком
 ```
 
-`check_llm.py` тратит 3 запроса к LLM, `demo.py` со всеми сценариями около 10. Бесплатный лимит OpenRouter — 50 запросов в день на аккаунт. Если лимит кончился, поставь в `.env` ключ другого аккаунта и перезапусти: `docker compose up -d --force-recreate llm-gateway`.
+`check_llm.py` тратит 3 запроса к LLM, `demo.py` со всеми сценариями около 10. Сценарии `starter`, `radar` и `restart` модель не вызывают. Бесплатный лимит OpenRouter — 50 запросов в день на аккаунт. Если лимит кончился, поставь в `.env` ключ другого аккаунта и перезапусти: `docker compose up -d --force-recreate llm-gateway`.
 
 ## Адреса
 
@@ -74,9 +81,11 @@ python3 scripts/demo.py access     # один сценарий целиком
 | Схема API | http://127.0.0.1:8080/api/openapi.yaml |
 | Grafana | http://127.0.0.1:3001 (дашборд AgentOps на главной) |
 | Prometheus | http://127.0.0.1:9091 |
+| Алерты | http://127.0.0.1:9091/alerts |
 | LLM-шлюз | http://127.0.0.1:4001 |
+| Сбои для демо (loggen) | http://127.0.0.1:8092/outages |
 
-Порты открыты только на локальной машине. Агент наружу не открыт: к нему обращается только core.
+Порты открыты только на локальной машине. Агент, Postgres и incident-radar наружу не открыты.
 
 ## Тестовые пользователи
 
@@ -93,6 +102,7 @@ curl -X POST 127.0.0.1:8080/api/auth/login -d '{"user_id":"anna.intern"}'
 | `igor.mentor` | наставник Анны |
 | `maria.mentor` | наставник Павла |
 | `olga.lead` | руководитель обеих команд |
+| `sergey.sre` | дежурный SRE, объявляет и закрывает сбои |
 
 ## Повседневные команды
 
@@ -103,30 +113,36 @@ docker compose logs -f core agent         # логи
 docker compose up -d --build core         # пересобрать один сервис после правок
 docker compose restart agent              # перезапуск без пересборки
 docker compose down                       # остановить
-docker compose down -v                    # остановить и удалить данные Prometheus и Grafana
+docker compose down -v                    # остановить и удалить все данные: заявки, метрики, логи
+docker compose exec postgres psql -U buddy  # посмотреть базу руками
 ```
 
-Заявки хранятся в памяти core, после перезапуска core они пропадают.
+Заявки и уведомления хранятся в Postgres и переживают перезапуск. Сбросить демо к начальному состоянию: `docker compose down -v`.
 
-Включить и выключить инцидент для демо:
+Сбой по логам для демо: VPN начинает отвечать 5xx, через 20–30 секунд инцидент открывается сам, после выключения закрывается сам.
 
 ```bash
-curl -X POST 127.0.0.1:8080/api/demo/incidents -H 'X-Demo-Token: demo' \
-  -d '{"service":"vpn","title":"Недоступен шлюз VPN","active":true}'
-curl -X POST 127.0.0.1:8080/api/demo/incidents -H 'X-Demo-Token: demo' \
-  -d '{"service":"vpn","active":false}'
+curl -X POST 127.0.0.1:8092/outages -d '{"service":"vpn","error_rate":0.7}'   # включить
+curl -X POST 127.0.0.1:8092/outages -d '{"service":"vpn","error_rate":0}'     # выключить
+python3 scripts/demo.py radar                                                  # то же сценарием, с выводом
 ```
 
 ## Тесты и линтер
 
-Тесты не обращаются к LLM и не тратят лимит.
+Тесты не обращаются к LLM и не тратят лимит. Все модули и итоговое покрытие одной командой (нужны Go 1.26, Python 3.13; Postgres для интеграционных тестов поднимется в Docker сам):
 
-core (Go):
+```bash
+ai-it-buddy/scripts/coverage.sh
+```
+
+То же самое запускает CI на каждый push и PR, плюс проверку спецификаций OpenSpec, тесты алертов Prometheus, линтер OpenAPI и сборку всех образов.
+
+По модулям, core (Go):
 
 ```bash
 cd ai-it-buddy/core
-go test -race -cover ./...
-go tool golangci-lint run ./...
+TEST_DATABASE_URL=postgres://... go test -race -p 1 -cover ./...   # без переменной тесты на Postgres пропускаются
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run ./...
 ```
 
 agent (Python):
@@ -146,7 +162,14 @@ go test -race -cover ./...
 go tool golangci-lint run ./...
 ```
 
-Покрытие сейчас: core 93%, agent 99%, llm-gateway 93%.
+Покрытие сейчас: core 92%, agent 99%, llm-gateway 90%, incident-radar 93%, loggen 73%.
+
+Спецификации и алерты:
+
+```bash
+cd ai-it-buddy && npx @fission-ai/openspec@2 validate --all --strict
+cd ai-it-buddy/deploy/prometheus && promtool test rules alerts_test.yml
+```
 
 ## Другой провайдер LLM
 
@@ -169,9 +192,13 @@ DEEPSEEK_API_KEY=...
 | `check_llm.py`: 404 `unavailable for free` | OpenRouter убрал бесплатную модель. Подбери другую на https://openrouter.ai/models?max_price=0&supported_parameters=tools и замени ID в `deploy/llm-gateway.yaml` |
 | Чат отвечает 502 | Смотри `docker compose logs agent llm-gateway` |
 | Шлюз не стартует: `... is empty` | В `.env` нет ключа или он пустой |
+| core пишет `postgres is not reachable` и выходит | Postgres не поднялся за 30 секунд: `docker compose logs postgres` |
+| `/readyz` показывает `degraded` | База недоступна, ядро работает из памяти и допишет изменения позже. Не перезапускай core, пока база не вернется |
+| Инцидент по логам не открывается | `docker compose logs core incident-radar loggen`; в Prometheus `buddy_radar_checks_total{result="error"}` |
 
 ## Правила
 
 - Ключи храним только в `.env`. Он есть в `.gitignore`, в коммиты не попадает.
 - Под каждую задачу заводим ветку и вливаем её в `main` через PR.
 - Данные в `data/` только синтетические.
+- Изменение поведения начинается со спецификации: `ai-it-buddy/openspec/changes/<имя>/` (proposal, design, tasks, дельта спецификации), после реализации - `openspec archive <имя>`. Примеры в `openspec/changes/archive/`.
