@@ -49,9 +49,9 @@ curl 127.0.0.1:3000/readyz        # {"status":"ok","storage":"postgres",...}
 | Где взять ключ | https://openrouter.ai/settings/keys, бесплатно, без карты. Лимит 50 запросов в день на аккаунт, один ход чата — 2–5 запросов |
 | Пример конфигурации без секретов | [ai-it-buddy/.env.example](ai-it-buddy/.env.example), [ai-it-buddy/deploy/llm-gateway.yaml](ai-it-buddy/deploy/llm-gateway.yaml) |
 
-Можно использовать свой ключ: вписать в `.env` и выполнить `docker compose up -d --force-recreate llm-gateway`. Другой провайдер подключается правкой `deploy/llm-gateway.yaml`, код не меняется. Для DeepSeek готов `deploy/llm-gateway.deepseek.yaml`.
+Можно использовать свой ключ: вписать в `.env` и выполнить `docker compose up -d --force-recreate llm-gateway`. Другой провайдер подключается правкой `deploy/llm-gateway.yaml`, код не меняется. 
 
-Ключи в репозиторий не попадают: `.env` в `.gitignore`.
+Ключи в репозиторий не попадают: `.env` в `.gitignore`!
 
 ## Порядок проверки сценариев демо
 
