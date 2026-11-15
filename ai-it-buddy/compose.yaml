@@ -65,10 +65,22 @@ services:
     environment:
       LLM_BASE_URL: http://llm-gateway:4000/v1
       CORE_MCP_URL: http://core:8080/mcp
+      HOME: /tmp   # gunicorn пишет служебный сокет в домашний каталог, а файловая система только на чтение
     mem_limit: 512m
     depends_on:
       llm-gateway:
         condition: service_started
+
+  # Интерфейс: статика + /api на ядро через nginx. Открывать http://127.0.0.1:3000
+  web:
+    build: ../web
+    image: ai-it-buddy-web:dev
+    ports:
+      - "127.0.0.1:3000:80"
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    mem_limit: 64m
+    depends_on: [core]
 
   # Сбои по логам: loggen пишет access-логи NGINX для VPN и GitLab, incident-radar их считает,
   # ядро раз в 10 секунд спрашивает радар по MCP и само открывает и закрывает инциденты.

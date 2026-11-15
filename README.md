@@ -1,6 +1,6 @@
-# HackChange 2026 — AI IT-Buddy
+# HackChange 2026 — AvitoBuddy
 
-Помощник стажёра на первые недели работы (кейс Авито). Стажёр пишет, что ему нужно, а помощник готовит заявки на доступы, оборудование и в техподдержку и подсказывает, что делать дальше по плану адаптации. Заявки отправляет сам стажёр, права проверяет сервер.
+Прототип для хакатона Hack&Change 2026, кейс Авито «AI-buddy: ИИ-наставник для стажёров». Помощник стажёра на первые недели работы (кейс Авито). Стажёр пишет, что ему нужно, а помощник готовит заявки на доступы, оборудование и в техподдержку и подсказывает, что делать дальше по плану адаптации. Заявки отправляет сам стажёр, права проверяет сервер.
 
 Данные синтетические. Инструкции в `ai-it-buddy/data/kb` тестовые и не являются регламентами Авито.
 
@@ -19,6 +19,7 @@ ai-it-buddy/        прототип
   compose.yaml      запуск всего проекта
 llm-gateway/        LLM-шлюз на Go
 incident-radar/     разбор access-логов NGINX, MCP-сервер
+web/                интерфейс: React + Vite, в Docker - nginx (alpine)
 .github/workflows/  CI: линтеры, тесты, покрытие, спецификации, алерты, сборка образов
 ```
 
@@ -43,7 +44,17 @@ incident-radar/     разбор access-логов NGINX, MCP-сервер
 
 Для разработки без Docker нужны Go 1.26 и Python 3.13.
 
-## Запуск
+## Варианты запуска
+
+| Вариант | Для чего | Что нужно |
+|---|---|---|
+| 1. Всё в Docker | демо, проверка, запись видео | Docker |
+| 2. Без ключа LLM | интерфейс, заявки, сбои, наставник - всё, кроме чата | Docker |
+| 3. Бэкенд в Docker + фронт локально | разработка интерфейса с горячей перезагрузкой | Docker, Node 22 |
+| 4. Только бэкенд, сценарии из терминала | проверка без браузера | Docker, Python 3.10+ |
+| 5. Без Docker | разработка ядра и агента | Go 1.26, Python 3.13, Postgres 16+ |
+
+### 1. Всё в Docker
 
 ```bash
 cd ai-it-buddy
@@ -66,10 +77,49 @@ docker compose up -d --build
 
 ```bash
 docker compose ps                  # все сервисы running или healthy
-curl 127.0.0.1:8080/readyz         # {"status":"ok","storage":"postgres",...}
+curl 127.0.0.1:3000/readyz         # {"status":"ok","storage":"postgres",...} - фронт и ядро связаны
 python3 scripts/check_llm.py       # модели отвечают и вызывают инструменты
-python3 scripts/demo.py access     # один сценарий целиком
 ```
+
+Интерфейс: **http://127.0.0.1:3000**. Вход без пароля: выбрать сотрудника. Сценарий показа по шагам - `ai-it-buddy/docs/AvitoBuddy_demo_scenario.pdf`.
+
+### 2. Без ключа LLM
+
+То же, что вариант 1, но `.env` можно не заполнять. Работает всё, кроме чата: стартовый набор, заявки, согласования, путь адаптации, сбои (ручные и по логам), уведомления, сводка наставнику. Чат ответит «Помощник сейчас недоступен», а `llm-gateway` в `docker compose ps` будет перезапускаться с ошибкой про пустой ключ - это ожидаемо.
+
+### 3. Бэкенд в Docker, фронт локально
+
+```bash
+cd ai-it-buddy && docker compose up -d --build     # бэкенд
+cd ../web && npm install && npm run dev            # http://localhost:5173
+```
+
+Vite проксирует `/api` на ядро `127.0.0.1:8080`, правки в `web/src` видны сразу.
+
+### 4. Только бэкенд, сценарии из терминала
+
+```bash
+cd ai-it-buddy && docker compose up -d --build
+python3 scripts/demo.py                    # все сценарии кроме restart, ~10 запросов к LLM
+python3 scripts/demo.py starter radar      # без LLM
+python3 scripts/demo.py restart            # перезапуск ядра: данные на месте
+```
+
+Сценарии: `access`, `notbyrole`, `incident`, `equipment`, `onboarding`, `sre`, `starter`, `security`, `radar`, `restart`.
+
+### 5. Без Docker
+
+Ядро без `DATABASE_URL` работает только в памяти, без `RADAR_URL` - без автоматических сбоев, без `AGENT_URL` - без чата. Минимум:
+
+```bash
+cd ai-it-buddy/core
+JWT_SECRET=dev-secret-dev-secret-dev-secret DATA_DIR=../data DEMO_TOKEN=demo go run ./cmd/core   # :8080
+cd ../../web && npm install && npm run dev                                                         # :5173
+```
+
+Полный набор переменных ядра - в `ai-it-buddy/README.md` и `ai-it-buddy/compose.yaml`.
+
+### Ключ и лимит модели
 
 `check_llm.py` тратит 3 запроса к LLM, `demo.py` со всеми сценариями около 10. Сценарии `starter`, `radar` и `restart` модель не вызывают. Бесплатный лимит OpenRouter — 50 запросов в день на аккаунт. Если лимит кончился, поставь в `.env` ключ другого аккаунта и перезапусти: `docker compose up -d --force-recreate llm-gateway`.
 
@@ -77,6 +127,7 @@ python3 scripts/demo.py access     # один сценарий целиком
 
 | Что | Адрес |
 |---|---|
+| **Интерфейс** | http://127.0.0.1:3000 |
 | API | http://127.0.0.1:8080/api |
 | Схема API | http://127.0.0.1:8080/api/openapi.yaml |
 | Grafana | http://127.0.0.1:3001 (дашборд AgentOps на главной) |
@@ -86,6 +137,8 @@ python3 scripts/demo.py access     # один сценарий целиком
 | Сбои для демо (loggen) | http://127.0.0.1:8092/outages |
 
 Порты открыты только на локальной машине. Агент, Postgres и incident-radar наружу не открыты.
+
+Интерфейс в Docker отдает nginx: он же проксирует `/api` на ядро, поэтому браузеру нужен один адрес и CORS не нужен.
 
 ## Тестовые пользователи
 
@@ -103,6 +156,8 @@ curl -X POST 127.0.0.1:8080/api/auth/login -d '{"user_id":"anna.intern"}'
 | `maria.mentor` | наставник Павла |
 | `olga.lead` | руководитель обеих команд |
 | `sergey.sre` | дежурный SRE, объявляет и закрывает сбои |
+
+Все сотрудники вымышленные, список - `ai-it-buddy/data/seed/users.yaml`.
 
 ## Повседневные команды
 
@@ -191,6 +246,8 @@ DEEPSEEK_API_KEY=...
 | `check_llm.py`: HTTP 402 или 429 | Кончился лимит или баланс. Поставь ключ другого аккаунта |
 | `check_llm.py`: 404 `unavailable for free` | OpenRouter убрал бесплатную модель. Подбери другую на https://openrouter.ai/models?max_price=0&supported_parameters=tools и замени ID в `deploy/llm-gateway.yaml` |
 | Чат отвечает 502 | Смотри `docker compose logs agent llm-gateway` |
+| Интерфейс не открывается на :3000 | `docker compose ps web` и `docker compose logs web`; в `compose.yaml` должен быть сервис `web`, а папка `web` - рядом с `ai-it-buddy` |
+| `npm run dev`: ошибка про `@rolldown/binding-win32` | `node_modules` поставлены из Windows, а запуск в WSL/Linux: `rm -rf node_modules && npm install` |
 | Шлюз не стартует: `... is empty` | В `.env` нет ключа или он пустой |
 | core пишет `postgres is not reachable` и выходит | Postgres не поднялся за 30 секунд: `docker compose logs postgres` |
 | `/readyz` показывает `degraded` | База недоступна, ядро работает из памяти и допишет изменения позже. Не перезапускай core, пока база не вернется |

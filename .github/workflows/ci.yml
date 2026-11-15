@@ -73,6 +73,24 @@ jobs:
           total=$(python -c "import xml.etree.ElementTree as e; print(f\"{float(e.parse('coverage.xml').getroot().get('line-rate'))*100:.1f}%\")")
           printf '| модуль | покрытие |\n|---|---|\n| ai-it-buddy/agent | %s |\n' "$total" >> "$GITHUB_STEP_SUMMARY"
 
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: typecheck
+        run: npx tsc --noEmit -p .
+      - name: build
+        run: npm run build
+
   specs-and-alerts:
     runs-on: ubuntu-latest
     steps:

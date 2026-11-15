@@ -102,7 +102,7 @@ func (c *Core) Digest(viewerID, internID string) (Digest, error) {
 
 // talkingPoints - короткий план разговора на 1:1 из фактов сводки
 func talkingPoints(d Digest) []string {
-	var out []string
+	out := []string{} // [] а не null: фронт проверяет схему
 	if n := len(d.WaitingForYou); n > 0 {
 		out = append(out, fmt.Sprintf("Решить по %d заявк(ам) не по роли - стажер ждет", n))
 	}

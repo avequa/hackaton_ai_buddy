@@ -1,0 +1,191 @@
+/*
+ * Палитра приложения. ВСЕ цвета лежат здесь: меняйте значения тут, и они поменяются во всём интерфейсе.
+ * В index.css цвета используются только как var(--clr-…), хардкодить #hex там не нужно.
+ */
+:root {
+  /* ---- Основные (смысловые) цвета ---- */
+  --clr-accent: #00aaff;
+  --clr-accent-hover: #008fe0;
+  --clr-accent-text: #008fd5;
+  --clr-accent-dark: #0077b8;
+  --clr-accent-soft: #eaf7ff;
+  --clr-accent-faint: #f2faff;
+  --clr-text: #202127;
+  --clr-bg: #f5f6f7;
+  --clr-white: #ffffff;
+  --clr-border: #e4e8ec;
+  --clr-border-strong: #dde2e7;
+  --clr-muted: #94938f;
+  --clr-sidebar-bg: #202126;
+  --clr-danger: #b23a3a;
+  --clr-danger-soft: #fde9e9;
+  --clr-danger-dark: #a03232;
+  --clr-success: #287649;
+  --clr-success-soft: #eaf7ee;
+  --clr-warning: #a66c11;
+  --clr-warning-soft: #fff2d1;
+  --clr-violet: #7765d5;
+
+  /* ---- Нейтральные (имя = оттенок + светлота в %) ---- */
+  --clr-gray-13-a5: #23221d0d;
+  --clr-gray-13-a7: #24231e12;
+  --clr-gray-13-a9: #24231e18;
+  --clr-gray-13-a20: #24231e33;
+  --clr-gray-15: #232329;
+  --clr-gray-16: #26272c;
+  --clr-gray-17: #292a2e;
+  --clr-gray-17-2: #292a2f;
+  --clr-gray-18: #2a2b31;
+  --clr-gray-20: #303036;
+  --clr-gray-20-2: #303137;
+  --clr-gray-20-3: #313136;
+  --clr-gray-21: #313238;
+  --clr-gray-21-2: #333338;
+  --clr-gray-21-3: #33343a;
+  --clr-gray-22: #35353a;
+  --clr-gray-23: #37383f;
+  --clr-gray-25: #3f3f43;
+  --clr-gray-26: #414145;
+  --clr-gray-29: #4a4a4c;
+  --clr-gray-31: #4e4e52;
+  --clr-gray-34: #55545a;
+  --clr-gray-37: #5d5d60;
+  --clr-gray-40: #686762;
+  --clr-gray-40-2: #696864;
+  --clr-gray-41: #6b6a66;
+  --clr-gray-41-2: #68686b;
+  --clr-gray-44: #66737c;
+  --clr-gray-44-2: #73736f;
+  --clr-gray-45: #75746f;
+  --clr-gray-45-2: #737670;
+  --clr-gray-45-3: #767570;
+  --clr-gray-45-4: #777570;
+  --clr-gray-45-5: #777671;
+  --clr-gray-46: #777773;
+  --clr-gray-47: #73747b;
+  --clr-gray-47-2: #75767c;
+  --clr-gray-51: #7f8086;
+  --clr-gray-52: #88847f;
+  --clr-gray-52-2: #88867f;
+  --clr-gray-52-3: #7a858d;
+  --clr-gray-52-4: #898782;
+  --clr-gray-53: #8b8983;
+  --clr-gray-53-2: #7c8a92;
+  --clr-gray-54: #8b8a86;
+  --clr-gray-56: #84919a;
+  --clr-gray-57: #96948e;
+  --clr-gray-58: #97958f;
+  --clr-gray-58-2: #8a969e;
+  --clr-gray-59: #9a9892;
+  --clr-gray-59-2: #9b9993;
+  --clr-gray-60: #9c9a94;
+  --clr-gray-61: #a09e98;
+  --clr-gray-62: #a09f9a;
+  --clr-gray-62-2: #a2a09b;
+  --clr-gray-62-3: #a3a19b;
+  --clr-gray-63: #9c9da3;
+  --clr-gray-64: #a6a49e;
+  --clr-gray-65: #aaa8a2;
+  --clr-gray-65-2: #aaa9a4;
+  --clr-gray-68: #aaaab0;
+  --clr-gray-69: #b2b1ac;
+  --clr-gray-71: #b8b6b0;
+  --clr-gray-71-2: #bab8b2;
+  --clr-gray-77: #c7c6c0;
+  --clr-gray-83: #d1d1d4;
+  --clr-gray-84: #d9d8d3;
+  --clr-gray-88: #e3e2dd;
+  --clr-gray-89: #e2e5e0;
+  --clr-gray-94: #f1f1ee;
+  --clr-gray-97: #f2f9fd;
+  --clr-gray-97-2: #f3f9fc;
+  --clr-gray-97-3: #f9f8f6;
+  --clr-gray-97-4: #f2fafe;
+  --clr-gray-97-5: #faf9f6;
+  --clr-gray-98: #fafaf8;
+  --clr-gray-98-a80: #fbfbf9cc;
+  --clr-gray-98-2: #f5fbff;
+  --clr-gray-98-3: #fff6f6;
+  --clr-gray-98-4: #fffaf6;
+  --clr-gray-98-5: #f7fcff;
+
+  /* ---- Синие (имя = оттенок + светлота в %) ---- */
+  --clr-blue-16: #212b32;
+  --clr-blue-25: #34434c;
+  --clr-blue-41: #35709a;
+  --clr-blue-47: #3a83b4;
+  --clr-blue-50-a9: #00aaff17;
+  --clr-blue-50-a15: #00aaff26;
+  --clr-blue-50-a19: #00aaff30;
+  --clr-blue-50-a25: #00aaff40;
+  --clr-blue-53: #6652bd;
+  --clr-blue-53-2: #6752be;
+  --clr-blue-54: #6e62af;
+  --clr-blue-57: #7464bf;
+  --clr-blue-83: #cdd3d9;
+  --clr-blue-90: #e1e5e9;
+  --clr-blue-92: #dceef8;
+  --clr-blue-92-2: #e7eaed;
+  --clr-blue-93: #eaedf0;
+  --clr-blue-95: #e5f6ff;
+  --clr-blue-95-2: #f0f2f4;
+  --clr-blue-95-3: #e8f4fd;
+  --clr-blue-95-4: #ebe8ff;
+  --clr-blue-95-5: #f2f3f5;
+  --clr-blue-96: #efebff;
+  --clr-blue-96-2: #f0edff;
+
+  /* ---- Зелёные (имя = оттенок + светлота в %) ---- */
+  --clr-green-31: #168a63;
+  --clr-green-35: #2d8552;
+  --clr-green-35-2: #318257;
+  --clr-green-38: #2f9360;
+  --clr-green-44: #439c6b;
+  --clr-green-44-2: #39a966;
+  --clr-green-46: #35b66a;
+  --clr-green-46-a9: #35b66a18;
+  --clr-green-48: #619375;
+  --clr-green-50: #55a973;
+  --clr-green-53: #55b879;
+  --clr-green-53-2: #5bb27b;
+  --clr-green-57: #66bd86;
+  --clr-green-63: #74cf9a;
+  --clr-green-93: #e5f5eb;
+  --clr-green-93-2: #e6f5eb;
+  --clr-green-93-3: #e6f6ec;
+
+  /* ---- Красные (имя = оттенок + светлота в %) ---- */
+  --clr-red-52: #d84e32;
+  --clr-red-54: #c94a4a;
+  --clr-red-60: #d65a5a;
+  --clr-red-86: #f3c5c5;
+  --clr-red-86-2: #f0c9c9;
+  --clr-red-95: #ffede8;
+
+  /* ---- Оранжевые (имя = оттенок + светлота в %) ---- */
+  --clr-orange-24: #49372f;
+  --clr-orange-29: #5c4036;
+  --clr-orange-30: #8a5a10;
+  --clr-orange-32: #594f48;
+  --clr-orange-34: #6f5540;
+  --clr-orange-35: #9b6815;
+  --clr-orange-42: #8a684c;
+  --clr-orange-50: #dc7025;
+  --clr-orange-80: #eac2ad;
+  --clr-orange-81: #f1c7ad;
+  --clr-orange-85: #e7d7cd;
+  --clr-orange-88: #e7e1dc;
+  --clr-orange-90: #fff1ce;
+  --clr-orange-94: #fff1df;
+  --clr-orange-94-2: #fff6e0;
+
+  /* ---- Жёлтые (имя = оттенок + светлота в %) ---- */
+  --clr-yellow-14-a3: #29271e08;
+  --clr-yellow-14-a7: #29271e12;
+  --clr-yellow-91: #ecebe6;
+  --clr-yellow-93: #efefeb;
+  --clr-yellow-95: #f3f3f0;
+  --clr-yellow-95-2: #f4f4f1;
+  --clr-yellow-95-3: #f5f4f0;
+  --clr-yellow-96: #f7f7f4;
+}

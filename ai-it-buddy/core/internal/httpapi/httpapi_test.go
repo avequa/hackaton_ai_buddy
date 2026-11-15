@@ -540,3 +540,20 @@ func TestDigestAndSecurity(t *testing.T) {
 		t.Fatalf("demo digests: %d %v", code, out)
 	}
 }
+
+// Пустые списки в ответах - [], а не null: фронт проверяет ответы схемой Zod
+func TestEmptyListsAreArrays(t *testing.T) {
+	e := newEnv(t, false)
+	tok := e.login(t, "igor.mentor")
+	for _, path := range []string{"/api/mentees/anna.intern/onboarding", "/api/mentees/anna.intern/digest", "/api/onboarding"} {
+		who := tok
+		if path == "/api/onboarding" {
+			who = e.login(t, "anna.intern")
+		}
+		code, body := e.do(t, "GET", path, who, "")
+		raw, _ := json.Marshal(body)
+		if code != 200 || strings.Contains(string(raw), ":null") {
+			t.Fatalf("%s: %d %s", path, code, raw)
+		}
+	}
+}

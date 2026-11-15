@@ -39,7 +39,7 @@ func (c *Core) Onboarding(userID string) (Onboarding, error) {
 		c.mu.Unlock()
 		return Onboarding{}, err
 	}
-	out := Onboarding{User: u.ID, Total: len(c.steps)}
+	out := Onboarding{User: u.ID, Total: len(c.steps), OpenReqs: []Request{}} // [] а не null: фронт проверяет схему
 	for _, s := range c.steps {
 		v := StepView{Step: s, Hint: confirmHints[s.Confirm]}
 		if ev, ok := c.stepsDone[u.ID][s.ID]; ok {
