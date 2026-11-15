@@ -86,8 +86,9 @@ export function IncidentBanner() {
               Сбой: {serviceLabel(inc.service)} — {inc.title}
             </strong>
             <p>
-              {inc.message ? `${inc.message} ` : ""}Проблема не у вас: заявку в поддержку заводить не нужно, сообщим, когда
-              починят.
+              {inc.message?.includes("заводить не нужно")
+                ? inc.message
+                : `${inc.message ? `${inc.message} ` : ""}Проблема не у вас: заявку в поддержку заводить не нужно, сообщим, когда починят.`}
             </p>
           </div>
           <small>
@@ -120,7 +121,11 @@ export function StarterPackDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<{ id: string; ok: boolean; text: string }[] | null>(null);
 
+  // один запрос даже при двойном вызове эффекта в StrictMode: второй вернул бы «уже запрошено»
+  const started = useRef(false);
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     api
       .starterPack()
       .then(setPack)
