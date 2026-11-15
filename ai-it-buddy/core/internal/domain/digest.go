@@ -32,10 +32,8 @@ type TopicCount struct {
 	Count int    `json:"count"`
 }
 
-// stuckAfter - заявка "застряла", если открыта дольше суток
 const stuckAfter = 24 * time.Hour
 
-// currentWeek - неделя стажировки по дате начала (1, если дата неизвестна)
 func currentWeek(u User, now time.Time) int {
 	start, err := time.Parse("2006-01-02", u.StartDate)
 	if err != nil || now.Before(start) {
@@ -100,7 +98,6 @@ func (c *Core) Digest(viewerID, internID string) (Digest, error) {
 	return d, nil
 }
 
-// talkingPoints - короткий план разговора на 1:1 из фактов сводки
 func talkingPoints(d Digest) []string {
 	out := []string{} // [] а не null: фронт проверяет схему
 	if n := len(d.WaitingForYou); n > 0 {

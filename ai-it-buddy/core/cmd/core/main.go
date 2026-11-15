@@ -26,7 +26,6 @@ import (
 // version задается при сборке: -ldflags "-X main.version=..."
 var version = "dev"
 
-// config - настройки из переменных окружения
 type config struct {
 	Addr          string
 	DataDir       string
@@ -71,7 +70,6 @@ func start() int {
 	return 0
 }
 
-// env - переменная окружения или значение по умолчанию
 func env(name, def string) string {
 	if v := os.Getenv(name); v != "" {
 		return v
@@ -79,7 +77,6 @@ func env(name, def string) string {
 	return def
 }
 
-// loadConfig - конфигурация из окружения
 func loadConfig(getenv func(string) string) (config, error) {
 	get := func(name, def string) string {
 		if v := getenv(name); v != "" {
@@ -134,7 +131,6 @@ func loadConfig(getenv func(string) string) (config, error) {
 	return cfg, nil
 }
 
-// newLogger - JSON для контейнера, text для локальной отладки
 func newLogger(format string) *slog.Logger {
 	if format == "text" {
 		return slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -142,7 +138,6 @@ func newLogger(format string) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stderr, nil))
 }
 
-// run - собирает ядро и слушает до отмены context
 func run(ctx context.Context, cfg config, logger *slog.Logger) error {
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
@@ -267,7 +262,6 @@ func simulateApprovers(ctx context.Context, core *domain.Core, m *metrics.Metric
 	}
 }
 
-// sendDigests - еженедельная сводка наставникам (в Авито - задача ИИ-крона)
 func sendDigests(ctx context.Context, core *domain.Core, every time.Duration, logger *slog.Logger) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -281,7 +275,6 @@ func sendDigests(ctx context.Context, core *domain.Core, every time.Duration, lo
 	}
 }
 
-// healthcheck - для HEALTHCHECK в distroless-образе, где нет curl
 func healthcheck(addr string) int {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {

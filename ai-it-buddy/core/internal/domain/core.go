@@ -50,7 +50,6 @@ type Core struct {
 	kb    KBSearcher // полнотекстовый поиск в Postgres; nil - поиск в памяти
 }
 
-// idPrefix - префикс номера заявки по виду, как в настоящих системах заявок
 var idPrefix = map[string]string{KindAccess: "ACC", KindHelpdesk: "HD", KindEquipment: "INV"}
 
 // New - собирает ядро из начальных данных
@@ -106,7 +105,6 @@ func New(seed Seed, opts Options) (*Core, error) {
 	return c, nil
 }
 
-// validate - ссылки в начальных данных указывают на существующие объекты
 func (c *Core) validate() error {
 	for _, u := range c.users {
 		for _, ref := range []string{u.Mentor, u.Lead} {
@@ -165,7 +163,6 @@ func (c *Core) Users() []User {
 	return out
 }
 
-// name - имя сотрудника или сама ссылка (devops, auto)
 func (c *Core) name(id string) string {
 	switch id {
 	case ApproverDevOps:
@@ -187,7 +184,6 @@ func (c *Core) supervisor(u User) string {
 	return u.Lead
 }
 
-// profile - профиль роли пользователя (первый подходящий)
 func (c *Core) profile(u User) RoleProfile {
 	for _, p := range c.roles {
 		if (p.Match.Role == "" || p.Match.Role == u.Role) && (p.Match.Position == "" || p.Match.Position == u.Position) {
@@ -197,7 +193,6 @@ func (c *Core) profile(u User) RoleProfile {
 	return RoleProfile{}
 }
 
-// newRequest - создает черновик заявки с номером и первой записью истории
 func (c *Core) newRequest(kind string, u User, title string) *Request {
 	c.seq[kind]++
 	now := c.opts.Now()
@@ -217,7 +212,6 @@ func (c *Core) newRequest(kind string, u User, title string) *Request {
 	return r
 }
 
-// move - меняет статус заявки и пишет историю
 func (c *Core) move(r *Request, status, by, note string) {
 	now := c.opts.Now()
 	r.Status = status
@@ -267,7 +261,6 @@ func (c *Core) MyRequests(userID, kind string) []Request {
 	return out
 }
 
-// sortRequests - новые сверху, при равном времени по номеру
 func sortRequests(rs []Request) {
 	slices.SortFunc(rs, func(a, b Request) int {
 		if c := b.CreatedAt.Compare(a.CreatedAt); c != 0 {
@@ -277,7 +270,6 @@ func sortRequests(rs []Request) {
 	})
 }
 
-// own - заявка пользователя в нужном статусе
 func (c *Core) own(userID, id, status string) (*Request, error) {
 	r, ok := c.requests[id]
 	if !ok {
@@ -399,7 +391,6 @@ func (c *Core) Decide(mentorID, id string, approve bool, comment string) (Reques
 	return *r, nil
 }
 
-// approverAfterMentor - кто согласует после наставника
 func (c *Core) approverAfterMentor(r *Request) (string, string) {
 	switch r.Kind {
 	case KindAccess:

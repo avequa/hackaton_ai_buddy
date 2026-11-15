@@ -24,7 +24,6 @@ import (
 	"time"
 )
 
-// endpoint - путь сервиса и его доля в трафике
 type endpoint struct {
 	method, path string
 	weight       int
@@ -32,7 +31,6 @@ type endpoint struct {
 	core         bool // основной путь: при сбое падает он
 }
 
-// profiles - трафик сервисов, похожий на настоящий
 var profiles = map[string][]endpoint{
 	"vpn": {
 		{"POST", "/api/v1/connect", 5, 512, true},
@@ -55,7 +53,6 @@ var agents = []string{
 	"git/2.47.0", "gitlab-runner 17.6.0", "openvpn-connect/3.5", "curl/8.10.1",
 }
 
-// generator - пишет логи и хранит текущие сбои
 type generator struct {
 	dir      string
 	services []string
@@ -82,7 +79,6 @@ func newGenerator(dir string, services []string, maxBytes int64, seed uint64) (*
 	}, nil
 }
 
-// line - одна строка лога; при сбое основной путь отвечает 502/503/504
 func (g *generator) line(service string, at time.Time) string {
 	eps := profiles[service]
 	total := 0
@@ -141,7 +137,6 @@ func (g *generator) write(service string, lines []string) error {
 	return err
 }
 
-// tick - очередная порция трафика: в среднем rps запросов в секунду на сервис
 func (g *generator) tick(now time.Time, rps int) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -166,7 +161,6 @@ func (g *generator) close() {
 	}
 }
 
-// outage - ручка демо: включить или выключить сбой
 type outage struct {
 	Service   string  `json:"service"`
 	ErrorRate float64 `json:"error_rate"` // 0 - сбоя нет, 0.7 - 70% запросов к основным путям отвечают 5xx
@@ -274,7 +268,6 @@ func run() error {
 	}
 }
 
-// healthcheck - для HEALTHCHECK в distroless-образе
 func healthcheck(addr string) int {
 	_, port, err := net.SplitHostPort(addr)
 	if err != nil {

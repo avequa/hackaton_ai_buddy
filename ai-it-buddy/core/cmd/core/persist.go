@@ -61,7 +61,6 @@ func openStorage(ctx context.Context, url string, wait time.Duration, core *doma
 	return p, nil
 }
 
-// flush - записать накопленные изменения
 func (p *persister) flush(ctx context.Context) error {
 	changes, commit := p.core.TakeChanges()
 	var err error
@@ -113,7 +112,6 @@ func (p *persister) loop(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// ready - для /readyz
 func (p *persister) ready(ctx context.Context) httpapi.Readiness {
 	r := httpapi.Readiness{Status: "ok", Storage: "postgres", Pending: p.core.PendingChanges()}
 	p.mu.Lock()

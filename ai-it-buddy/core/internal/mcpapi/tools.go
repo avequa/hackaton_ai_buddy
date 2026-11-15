@@ -41,12 +41,10 @@ type DraftOutput struct {
 	NextStep     string            `json:"next_step,omitempty"`
 }
 
-// confirmHint - что сказать пользователю после черновика
 const confirmHint = "Draft created, NOT submitted. Ask the user to check it and press Confirm on the card. " +
 	"If policy.verdict is needs_mentor, explain the reasons and recommend discussing with the mentor first, " +
 	"but the user may still submit."
 
-// addAccess - инструменты Access Service
 func (a *API) addAccess(s *mcp.Server) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "list_services",
@@ -121,7 +119,6 @@ type TicketInput struct {
 	StepsTried []string `json:"steps_tried,omitempty" jsonschema:"troubleshooting steps the user already tried"`
 }
 
-// addHelpdesk - инструменты Helpdesk
 func (a *API) addHelpdesk(s *mcp.Server) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "check_service_health",
@@ -191,7 +188,6 @@ type DraftEquipmentInput struct {
 	Reason string `json:"reason" jsonschema:"why the user needs it, one sentence"`
 }
 
-// addInventory - инструменты Inventory
 func (a *API) addInventory(s *mcp.Server) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_equipment",
@@ -232,7 +228,6 @@ type OnboardingOutput struct {
 	Steps []domain.StepView `json:"steps"`
 }
 
-// addOnboarding - инструменты пути адаптации
 func (a *API) addOnboarding(s *mcp.Server) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_onboarding",

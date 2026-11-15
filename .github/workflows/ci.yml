@@ -87,7 +87,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - name: typecheck
-        run: npx tsc --noEmit -p .
+        run: npm run typecheck
+      - name: test
+        run: npm run coverage
+      - name: coverage
+        run: |
+          total=$(node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct + '%')")
+          printf '| модуль | покрытие |\n|---|---|\n| web | %s |\n' "$total" >> "$GITHUB_STEP_SUMMARY"
       - name: build
         run: npm run build
 

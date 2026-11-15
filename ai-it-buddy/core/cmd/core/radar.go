@@ -5,7 +5,6 @@ import (
 	"github.com/avequa/ai-it-buddy/core/internal/metrics"
 )
 
-// radarIncidents - ядро в роли получателя сигналов incident-radar
 type radarIncidents struct{ core *domain.Core }
 
 func (r radarIncidents) AutoOpenIncident(service, summary, message string) (string, bool, error) {
@@ -18,7 +17,6 @@ func (r radarIncidents) AutoResolveIncident(service string) (string, bool) {
 	return inc.ID, ok
 }
 
-// radarObserver - метрики проверок для Grafana и алертов
 type radarObserver struct{ m *metrics.Metrics }
 
 func (o radarObserver) Checked(service, result string, errorRate float64) {

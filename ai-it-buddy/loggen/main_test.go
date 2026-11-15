@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -150,5 +151,41 @@ func TestHelpers(t *testing.T) {
 	t.Setenv("LOGGEN_MAX_MB", "x")
 	if run() == nil {
 		t.Fatal("bad max accepted")
+	}
+}
+
+// run пишет логи по таймеру и штатно останавливается по SIGTERM
+func TestRunUntilSignal(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LOG_DIR", dir)
+	t.Setenv("LOGGEN_ADDR", "127.0.0.1:0")
+	t.Setenv("LOGGEN_RPS", "5")
+	t.Setenv("LOGGEN_MAX_MB", "1")
+	go func() {
+		time.Sleep(1500 * time.Millisecond)
+		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+	}()
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	if lines := readLines(t, filepath.Join(dir, "vpn.log")); len(lines) == 0 {
+		t.Fatal("no log lines written")
+	}
+	t.Setenv("LOGGEN_SERVICES", "mail")
+	if run() == nil {
+		t.Fatal("unknown service accepted")
+	}
+}
+
+func TestHealthcheckOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer srv.Close()
+	if code := healthcheck(strings.TrimPrefix(srv.URL, "http://")); code != 0 {
+		t.Fatalf("healthcheck = %d", code)
+	}
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
+	defer bad.Close()
+	if healthcheck(strings.TrimPrefix(bad.URL, "http://")) == 0 {
+		t.Fatal("500 accepted")
 	}
 }

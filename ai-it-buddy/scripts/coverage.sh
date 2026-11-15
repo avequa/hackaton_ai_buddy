@@ -31,5 +31,13 @@ echo "== ai-it-buddy/agent"
 )
 rows+=("ai-it-buddy/agent|$(awk '/^TOTAL/ {print $NF}' /tmp/agent-cov.txt)")
 
+echo "== web"
+(
+  cd web
+  [[ -d node_modules ]] || npm ci --no-audit --no-fund >/dev/null
+  npx vitest run --coverage --coverage.reporter=json-summary >/dev/null
+)
+rows+=("web|$(node -e "console.log(require('./web/coverage/coverage-summary.json').total.lines.pct + '%')")")
+
 printf '\nмодуль                 покрытие\n'
 for r in "${rows[@]}"; do printf '%-22s %s\n' "${r%%|*}" "${r#*|}"; done

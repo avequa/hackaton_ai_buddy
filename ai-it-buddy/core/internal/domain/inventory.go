@@ -72,7 +72,6 @@ type EquipmentDraft struct {
 	Hint         string     `json:"hint,omitempty"`
 }
 
-// countIssued - сколько оборудования категории уже у пользователя
 func (c *Core) countIssued(userID, category string) int {
 	n := 0
 	for _, id := range c.heldItems(userID) {

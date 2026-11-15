@@ -23,7 +23,6 @@ type Onboarding struct {
 	OpenReqs []Request  `json:"open_requests"`
 }
 
-// confirmHints - подсказка, кто закрывает шаг
 var confirmHints = map[string]string{
 	ConfirmSelf:   "отметь сам, когда сделаешь",
 	ConfirmMentor: "отмечает наставник",
@@ -65,7 +64,6 @@ func (c *Core) Onboarding(userID string) (Onboarding, error) {
 	return out, nil
 }
 
-// hasService - есть ли у пользователя хоть какой-то доступ к сервису
 func (c *Core) hasService(userID, service string) bool {
 	return slices.ContainsFunc(c.grants, func(g Grant) bool { return g.User == userID && g.Service == service })
 }

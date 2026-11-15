@@ -33,7 +33,6 @@ type Notification struct {
 	Read      bool      `json:"read"`
 }
 
-// notify - уведомление одному пользователю (под блокировкой)
 func (c *Core) notify(userID, kind, title, text, ref string) {
 	if _, ok := c.users[userID]; !ok {
 		return // devops, it-support и прочие роли без учетки
@@ -45,7 +44,6 @@ func (c *Core) notify(userID, kind, title, text, ref string) {
 	c.dirty.notes[c.noteSeq] = true
 }
 
-// broadcast - уведомление всем (под блокировкой)
 func (c *Core) broadcast(kind, title, text, ref string) {
 	ids := make([]string, 0, len(c.users))
 	for id := range c.users {
@@ -57,13 +55,11 @@ func (c *Core) broadcast(kind, title, text, ref string) {
 	}
 }
 
-// statusText - как статус выглядит в уведомлении автору
 var statusText = map[string]string{
 	StatusInReview: "наставник одобрил, заявка у согласующего", StatusApproved: "одобрена",
 	StatusRejected: "отклонена", StatusInProgress: "взята в работу", StatusReady: "готово к выдаче",
 }
 
-// notifyStatus - автору заявки: статус изменился (под блокировкой)
 func (c *Core) notifyStatus(r *Request) {
 	text := statusText[r.Status]
 	if text == "" {
@@ -126,7 +122,6 @@ type SecurityEvent struct {
 	At     time.Time `json:"at"`
 }
 
-// secTitles - заголовок уведомления наставнику
 var secTitles = map[string]string{
 	SecForeign:   "Попытка открыть чужие данные",
 	SecForbidden: "Попытка действия не по роли",
@@ -236,7 +231,6 @@ func (c *Core) mentionsIntern(u User, message string) (string, bool) {
 	return "", false
 }
 
-// commonPrefix - длина общего начала двух слов
 func commonPrefix(a, b []rune) int {
 	n := 0
 	for n < len(a) && n < len(b) && a[n] == b[n] {
@@ -245,7 +239,6 @@ func commonPrefix(a, b []rune) int {
 	return n
 }
 
-// truncate - обрезка по символам, а не байтам
 func truncate(s string, n int) string {
 	if utf8.RuneCountInString(s) <= n {
 		return s

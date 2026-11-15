@@ -79,7 +79,6 @@ func newDirtySet() dirtySet {
 	}
 }
 
-// merge - вернуть ключи неудавшейся записи, чтобы записать их в следующий раз
 func (d *dirtySet) merge(o dirtySet) {
 	maps.Copy(d.requests, o.requests)
 	maps.Copy(d.grants, o.grants)
@@ -161,7 +160,6 @@ func (c *Core) TakeChanges() (State, func(ok bool)) {
 	return ch, commit
 }
 
-// cloneRequest - копия заявки, не разделяющая срезы и указатели с рабочей
 func cloneRequest(r *Request) Request {
 	cp := *r
 	cp.History = slices.Clone(r.History)
@@ -279,7 +277,6 @@ func (c *Core) Restore(st State) {
 	c.dirty.savedIssued, c.dirty.savedSecEvts = len(c.issued), len(c.security)
 }
 
-// incidentNum - номер инцидента из INC-123
 func incidentNum(id string) int {
 	n, _ := strconv.Atoi(strings.TrimPrefix(id, "INC-"))
 	return n

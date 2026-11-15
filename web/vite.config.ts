@@ -10,7 +10,7 @@ const CORE = process.env.CORE_URL || "http://127.0.0.1:8080";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: { "@": path.resolve(import.meta.dirname, "./src") },
   },
   server: {
     host: "0.0.0.0",

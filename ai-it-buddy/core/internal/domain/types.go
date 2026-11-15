@@ -71,7 +71,6 @@ const (
 	StatusCancelled     = "cancelled"
 )
 
-// finalStatuses - заявка закрыта и больше не меняется
 var finalStatuses = map[string]bool{StatusApproved: true, StatusRejected: true, StatusReady: true, StatusCancelled: true}
 
 // Действия с оборудованием

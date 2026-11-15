@@ -75,7 +75,6 @@ func (c *Core) MyAccess(userID string) ([]Grant, []Request, error) {
 	return grants, open, nil
 }
 
-// grantLevel - максимальный выданный уровень доступа к проекту
 func (c *Core) grantLevel(userID, service, project string) string {
 	best := ""
 	for _, g := range c.grants {
@@ -86,7 +85,6 @@ func (c *Core) grantLevel(userID, service, project string) string {
 	return best
 }
 
-// grant - выдает доступ (повышает уровень, если доступ уже был)
 func (c *Core) grant(userID string, a AccessDetails) {
 	c.dirty.grants[[3]string{userID, a.Service, a.Project}] = true
 	for i, g := range c.grants {
@@ -100,7 +98,6 @@ func (c *Core) grant(userID string, a AccessDetails) {
 	c.grants = append(c.grants, Grant{User: userID, Service: a.Service, Project: a.Project, Level: a.Level})
 }
 
-// lookupProject - сервис и проект из каталога
 func (c *Core) lookupProject(serviceID, projectID string) (Service, Project, error) {
 	s, ok := c.services[serviceID]
 	if !ok {

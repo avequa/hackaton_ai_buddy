@@ -105,7 +105,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   const selectedRequestId = route.screen === "requests" ? (route.requestId ?? null) : null;
   const [toast, setToast] = useState<{ id: number; text: string; tone: "error" | "ok" } | null>(null);
 
-  // ---- справочник имён ----
   const [names, setNames] = useState<Record<string, string>>({ [user.id]: user.name });
   useEffect(() => {
     api
@@ -115,7 +114,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   }, []);
   const nameOf = useCallback((id?: string) => (id ? (names[id] ?? id) : ""), [names]);
 
-  // ---- заявки + опрос ----
   const [requests, setRequests] = useState<Req[]>([]);
   const [requestsLoaded, setRequestsLoaded] = useState(false);
   const refreshRequests = useCallback(async () => {
@@ -142,7 +140,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
     return () => clearInterval(t);
   }, [pending, refreshRequests]);
 
-  // ---- путь адаптации (стажёр) ----
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const refreshOnboarding = useCallback(async () => {
@@ -151,7 +148,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
       setOnboarding(await api.onboarding());
       setOnboardingError(null);
     } catch (e) {
-      // прошлое значение оставляем, но ошибку показываем - раньше экран молча висел на «Загружаем путь…»
+      // прошлое значение оставляем, ошибку показываем
       setOnboardingError(errText(e));
     }
   }, [isIntern]);
@@ -161,7 +158,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
     void refreshOnboarding();
   }, [refreshOnboarding, signature]);
 
-  // ---- очередь согласований (наставник/руководитель) ----
   const [approvals, setApprovals] = useState<Req[] | null>(null);
   const refreshApprovals = useCallback(async () => {
     if (!canMentor) return;
@@ -178,13 +174,11 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
     return () => clearInterval(t);
   }, [canMentor, refreshApprovals]);
 
-  // ---- чат ----
   const afterTurn = useCallback(() => {
     void refreshRequests();
   }, [refreshRequests]);
   const chat = useChat(user.id, upsertRequest, afterTurn);
 
-  // ---- уведомления ----
   const notify = useCallback((text: string, tone: "error" | "ok" = "error") => {
     setToast({ id: Date.now(), text, tone });
   }, []);
@@ -194,7 +188,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // ---- лента уведомлений и сбои ----
   const onNewNotes = useCallback(
     (notes: Notification[], initial: boolean) => {
       if (notes.some((n) => n.kind === "request")) void refreshRequests();
@@ -210,7 +203,6 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [starterOpen, setStarterOpen] = useState(false);
   const openStarterPack = useCallback(() => setStarterOpen(true), []);
 
-  // ---- навигация ----
   const go = useCallback(
     (target: Screen) => navigate(target === "chat" ? paths.chat(lastModule) : SCREEN_PATH[target]),
     [navigate, lastModule],

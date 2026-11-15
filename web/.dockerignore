@@ -2,3 +2,5 @@ node_modules
 dist
 *Zone.Identifier
 .figma
+coverage
+tests

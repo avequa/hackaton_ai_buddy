@@ -34,7 +34,6 @@ export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().to
 export const newThreadId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : uid();
 
-// ---------- подписи ----------
 
 export const ROLE_LABEL: Record<Role, string> = {
   intern: "Стажёр",
@@ -107,7 +106,6 @@ export const isOpen = (r: Req) => !isFinal(r.status);
 /** Отменить можно, пока нет решения */
 export const canCancel = (r: Req) => !isFinal(r.status);
 
-// ---------- имена, даты ----------
 
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -146,7 +144,6 @@ export const requestsSignature = (items: Req[]) => items.map((r) => `${r.id}:${r
 
 export type { User };
 
-// ---------- сервисы, уведомления, сбои ----------
 
 export const SERVICE_LABEL: Record<string, string> = {
   vpn: "VPN",

@@ -72,7 +72,6 @@ func readYAML(path string, target any) error {
 	return nil
 }
 
-// loadDocs - markdown с YAML front matter (title, service, tags) между строками ---
 func loadDocs(dir string) ([]domain.Doc, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.md"))
 	if err != nil {
@@ -94,7 +93,6 @@ func loadDocs(dir string) ([]domain.Doc, error) {
 	return docs, nil
 }
 
-// parseDoc - разбирает front matter и тело документа
 func parseDoc(id, text string) (domain.Doc, error) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	rest, ok := strings.CutPrefix(text, "---\n")

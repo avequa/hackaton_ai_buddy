@@ -42,7 +42,6 @@ type MCPAnalyzer struct {
 	session *mcp.ClientSession
 }
 
-// bearer - добавляет токен радара к каждому запросу
 type bearer struct {
 	token string
 	next  http.RoundTripper
@@ -94,7 +93,6 @@ func (a *MCPAnalyzer) reset() {
 // Close - закрыть сессию
 func (a *MCPAnalyzer) Close() { a.reset() }
 
-// report - нужная часть отчета incident-radar (schema/report.schema.json)
 type report struct {
 	TotalRequestsCount int     `json:"totalRequestsCount"`
 	ErrorRate          float64 `json:"errorRate"`

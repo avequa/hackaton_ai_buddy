@@ -27,7 +27,6 @@ func (c *Core) ServiceHealth(service string) Health {
 	return Health{Service: service, Status: "ok"}
 }
 
-// serviceName - название сервиса для уведомлений (под блокировкой)
 func (c *Core) serviceName(id string) string {
 	if s, ok := c.services[id]; ok && s.Name != "" {
 		return s.Name
@@ -72,7 +71,6 @@ func (c *Core) OpenIncident(byID, service, title, message string) (Incident, err
 	return c.openIncident(by.Name, service, title, message)
 }
 
-// openIncident - общая часть для SRE, мониторинга и демо; by пустой - "мониторинг"
 func (c *Core) openIncident(by, service, title, message string) (Incident, error) {
 	service, title = strings.TrimSpace(service), strings.TrimSpace(title)
 	if service == "" || title == "" {
@@ -118,7 +116,6 @@ func (c *Core) ResolveIncident(byID, id string) (Incident, error) {
 	return inc, nil
 }
 
-// resolve - закрывает открытый инцидент по id (под блокировкой)
 func (c *Core) resolve(id, by string) (Incident, bool) {
 	for _, inc := range c.incidentLog {
 		if inc.ID != id || inc.ResolvedAt != nil {

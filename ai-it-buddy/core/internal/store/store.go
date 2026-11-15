@@ -72,7 +72,6 @@ func (s *Store) Close() { s.pool.Close() }
 // Ping - база доступна (для /readyz)
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
-// migrate - применяет еще не примененные файлы migrations/NNN_*.sql по порядку
 func (s *Store) migrate(ctx context.Context) error {
 	files, err := fs.Glob(migrations, "migrations/*.sql")
 	if err != nil {
@@ -390,7 +389,6 @@ func (s *Store) SyncDocs(ctx context.Context, docs []domain.Doc) error {
 	})
 }
 
-// maxDocChars - сколько текста документа отдавать агенту: экономим токены
 const maxDocChars = 1500
 
 // SearchKB - полнотекстовый поиск с русской морфологией. Каждое слово запроса ищется по основе

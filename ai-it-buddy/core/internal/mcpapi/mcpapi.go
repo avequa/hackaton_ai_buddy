@@ -88,7 +88,6 @@ func (a *API) Server(name string) (*mcp.Server, error) {
 	return s, nil
 }
 
-// instructions - как пользоваться сервером (уходит агенту при подключении)
 var instructions = map[string]string{
 	"access": "Access Service. To request access for a task: call list_services, map the task to services, projects " +
 		"and the minimal level (read < write < admin), check list_my_access, then draft_access_request for each missing one. " +
@@ -101,7 +100,6 @@ var instructions = map[string]string{
 	"onboarding": "Onboarding path of the intern: weeks, steps, status and the next step.",
 }
 
-// userID - пользователь из проверенного токена
 func userID(req *mcp.CallToolRequest) (string, error) {
 	if req == nil || req.Extra == nil || req.Extra.TokenInfo == nil || req.Extra.TokenInfo.UserID == "" {
 		return "", fmt.Errorf("no authenticated user: %w", domain.ErrForbidden)
@@ -136,7 +134,6 @@ func call[In, Out any](a *API, server, tool string, fn func(ctx context.Context,
 	}
 }
 
-// errorOutcome - метка метрики по виду ошибки домена
 func errorOutcome(err error) string {
 	switch {
 	case errors.Is(err, domain.ErrInvalid):
@@ -152,10 +149,8 @@ func errorOutcome(err error) string {
 	}
 }
 
-// readOnly - аннотация для инструментов, которые ничего не меняют
 var readOnly = &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: new(false)}
 
-// draftOnly - аннотация для инструментов, которые создают только черновик
 var draftOnly = &mcp.ToolAnnotations{DestructiveHint: new(false), OpenWorldHint: new(false)}
 
 // RequestsInput - аргументы list_my_requests
@@ -177,7 +172,6 @@ type RequestBrief struct {
 	Policy     *domain.Policy `json:"policy,omitempty"`
 }
 
-// brief - заявка в кратком виде
 func brief(r domain.Request) RequestBrief {
 	b := RequestBrief{ID: r.ID, Kind: r.Kind, Title: r.Title, Status: r.Status, Approver: r.ApproverName, Resolution: r.Resolution}
 	if r.Policy.Verdict != domain.VerdictOK {
@@ -187,12 +181,10 @@ func brief(r domain.Request) RequestBrief {
 	return b
 }
 
-// listToolNames - у каждого сервера свое имя: модели нужны уникальные имена инструментов
 var listToolNames = map[string]string{
 	domain.KindAccess: "list_access_requests", domain.KindHelpdesk: "list_tickets", domain.KindEquipment: "list_equipment_requests",
 }
 
-// addListRequests - список заявок пользователя по виду заявок сервера
 func (a *API) addListRequests(s *mcp.Server, server, kind string) {
 	name := listToolNames[kind]
 	mcp.AddTool(s, &mcp.Tool{

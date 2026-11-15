@@ -61,7 +61,6 @@ type Readiness struct {
 	Error       string     `json:"error,omitempty"`
 }
 
-// readyz - готовность и состояние хранилища
 func (a *api) readyz(w http.ResponseWriter, r *http.Request) {
 	st := Readiness{Status: "ok", Storage: "memory"}
 	if a.Ready != nil {
@@ -100,7 +99,6 @@ type AgentReply struct {
 	ToolsUsed []string `json:"tools_used"`
 }
 
-// ctxKey - ключ пользователя в context запроса
 type ctxKey struct{}
 
 // New - HTTP-обработчик со всеми маршрутами
@@ -183,12 +181,10 @@ func (a *api) cors(next http.Handler) http.Handler {
 	})
 }
 
-// api - обработчики
 type api struct {
 	Config
 }
 
-// instrument - метрики и access-лог по шаблону маршрута (без id в метках)
 func (a *api) instrument(mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -205,7 +201,6 @@ func (a *api) instrument(mux *http.ServeMux) http.Handler {
 	})
 }
 
-// recorder - запоминает код ответа
 type recorder struct {
 	http.ResponseWriter
 	code int
@@ -214,7 +209,6 @@ type recorder struct {
 func (r *recorder) WriteHeader(code int)        { r.code = code; r.ResponseWriter.WriteHeader(code) }
 func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
-// auth - проверка токена сессии (аудитория ui)
 func (a *api) auth(next func(http.ResponseWriter, *http.Request, domain.User)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -237,7 +231,6 @@ func (a *api) auth(next func(http.ResponseWriter, *http.Request, domain.User)) h
 	})
 }
 
-// personas - тестовые сотрудники для экрана входа
 func (a *api) personas(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"personas": a.Core.Users()})
 }
@@ -264,59 +257,49 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u, "expires_in": int(SessionTTL.Seconds())})
 }
 
-// me - профиль текущего пользователя
 func (a *api) me(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	writeJSON(w, http.StatusOK, u)
 }
 
-// onboarding - путь адаптации текущего пользователя
 func (a *api) onboarding(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	ob, err := a.Core.Onboarding(u.ID)
 	a.respond(w, u, ob, err, "")
 }
 
-// access - выданные доступы и открытые заявки на доступ (страница "Мои доступы")
 func (a *api) access(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	grants, open, err := a.Core.MyAccess(u.ID)
 	a.respond(w, u, map[string]any{"grants": nonNil(grants), "open_requests": nonNil(open)}, err, "")
 }
 
-// mentees - стажеры наставника или руководителя с прогрессом
 func (a *api) mentees(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	list, err := a.Core.Mentees(u.ID)
 	a.respond(w, u, map[string]any{"mentees": nonNil(list)}, err, "")
 }
 
-// menteeOnboarding - путь адаптации стажера для его наставника или руководителя
 func (a *api) menteeOnboarding(w http.ResponseWriter, r *http.Request, u domain.User) {
 	ob, err := a.Core.OnboardingFor(u.ID, r.PathValue("user"))
 	a.respond(w, u, ob, err, "mentee_onboarding")
 }
 
-// completeOwnStep - стажер отмечает свой шаг
 func (a *api) completeOwnStep(w http.ResponseWriter, r *http.Request, u domain.User) {
 	step, err := a.Core.CompleteStep(u.ID, u.ID, r.PathValue("step"))
 	a.respond(w, u, step, err, "onboarding_step")
 }
 
-// completeMenteeStep - наставник или руководитель отмечает шаг стажера
 func (a *api) completeMenteeStep(w http.ResponseWriter, r *http.Request, u domain.User) {
 	step, err := a.Core.CompleteStep(u.ID, r.PathValue("user"), r.PathValue("step"))
 	a.respond(w, u, step, err, "onboarding_step")
 }
 
-// requests - заявки пользователя (?kind=access|helpdesk|equipment)
 func (a *api) requests(w http.ResponseWriter, r *http.Request, u domain.User) {
 	writeJSON(w, http.StatusOK, map[string]any{"requests": nonNil(a.Core.MyRequests(u.ID, r.URL.Query().Get("kind")))})
 }
 
-// request - одна заявка с историей
 func (a *api) request(w http.ResponseWriter, r *http.Request, u domain.User) {
 	req, err := a.Core.Request(u.ID, r.PathValue("id"))
 	a.respond(w, u, req, err, "request_view")
 }
 
-// confirm - человек подтверждает черновик
 func (a *api) confirm(w http.ResponseWriter, r *http.Request, u domain.User) {
 	req, err := a.Core.Confirm(u.ID, r.PathValue("id"))
 	if err == nil {
@@ -326,7 +309,6 @@ func (a *api) confirm(w http.ResponseWriter, r *http.Request, u domain.User) {
 	a.respond(w, u, req, err, "confirm")
 }
 
-// cancel - человек отменяет заявку
 func (a *api) cancel(w http.ResponseWriter, r *http.Request, u domain.User) {
 	req, err := a.Core.Cancel(u.ID, r.PathValue("id"))
 	if err == nil {
@@ -335,12 +317,10 @@ func (a *api) cancel(w http.ResponseWriter, r *http.Request, u domain.User) {
 	a.respond(w, u, req, err, "cancel")
 }
 
-// approvals - очередь наставника: заявки "не по роли" его стажеров
 func (a *api) approvals(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	writeJSON(w, http.StatusOK, map[string]any{"approvals": nonNil(a.Core.Approvals(u.ID))})
 }
 
-// decide - наставник одобряет (approve) или отклоняет (reject) заявку
 func (a *api) decide(w http.ResponseWriter, r *http.Request, u domain.User) {
 	decision := r.PathValue("decision")
 	if decision != "approve" && decision != "reject" {
@@ -440,7 +420,6 @@ func (a *api) demoIncident(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h)
 }
 
-// demoDigests - разослать сводки наставникам сейчас (в проде - раз в неделю по крону)
 func (a *api) demoDigests(w http.ResponseWriter, r *http.Request) {
 	if !a.demoAllowed(r) {
 		writeError(w, http.StatusNotFound, "not found")
@@ -449,7 +428,6 @@ func (a *api) demoDigests(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int{"sent": a.Core.SendDigests()})
 }
 
-// demoAllowed - демо-ручки включены и токен верный
 func (a *api) demoAllowed(r *http.Request) bool {
 	return a.DemoToken != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Demo-Token")), []byte(a.DemoToken)) == 1
 }
@@ -475,7 +453,6 @@ func (a *api) notifications(w http.ResponseWriter, r *http.Request, u domain.Use
 	writeJSON(w, http.StatusOK, map[string]any{"notifications": list, "unread": unread})
 }
 
-// readNotifications - отметить прочитанными все уведомления до up_to включительно
 func (a *api) readNotifications(w http.ResponseWriter, r *http.Request, u domain.User) {
 	var in struct {
 		UpTo int64 `json:"up_to"`
@@ -486,12 +463,10 @@ func (a *api) readNotifications(w http.ResponseWriter, r *http.Request, u domain
 	writeJSON(w, http.StatusOK, map[string]int{"marked": a.Core.MarkRead(u.ID, in.UpTo)})
 }
 
-// incidents - открытые инциденты и закрытые за сутки (баннер в интерфейсе)
 func (a *api) incidents(w http.ResponseWriter, _ *http.Request, _ domain.User) {
 	writeJSON(w, http.StatusOK, map[string]any{"incidents": nonNil(a.Core.Incidents())})
 }
 
-// openIncident - SRE объявляет сбой: уведомление всем сразу
 func (a *api) openIncident(w http.ResponseWriter, r *http.Request, u domain.User) {
 	var in struct {
 		Service string `json:"service"`
@@ -508,7 +483,6 @@ func (a *api) openIncident(w http.ResponseWriter, r *http.Request, u domain.User
 	a.respond(w, u, inc, err, "incident")
 }
 
-// resolveIncident - SRE закрывает сбой
 func (a *api) resolveIncident(w http.ResponseWriter, r *http.Request, u domain.User) {
 	inc, err := a.Core.ResolveIncident(u.ID, r.PathValue("id"))
 	if err == nil {
@@ -517,7 +491,6 @@ func (a *api) resolveIncident(w http.ResponseWriter, r *http.Request, u domain.U
 	a.respond(w, u, inc, err, "incident")
 }
 
-// starterPack - черновики стандартных доступов стажера по роли и команде
 func (a *api) starterPack(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	items, err := a.Core.StarterPack(u.ID)
 	var drafts []string
@@ -529,7 +502,6 @@ func (a *api) starterPack(w http.ResponseWriter, _ *http.Request, u domain.User)
 	a.respond(w, u, map[string]any{"items": nonNil(items), "draft_ids": nonNil(drafts)}, err, "")
 }
 
-// confirmBatch - подтвердить несколько своих черновиков одной кнопкой
 func (a *api) confirmBatch(w http.ResponseWriter, r *http.Request, u domain.User) {
 	var in struct {
 		IDs []string `json:"ids"`
@@ -554,13 +526,11 @@ func (a *api) confirmBatch(w http.ResponseWriter, r *http.Request, u domain.User
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
-// digest - сводка по стажеру для наставника или руководителя
 func (a *api) digest(w http.ResponseWriter, r *http.Request, u domain.User) {
 	d, err := a.Core.Digest(u.ID, r.PathValue("user"))
 	a.respond(w, u, d, err, "digest")
 }
 
-// securityEvents - попытки выйти за права у стажеров наставника или руководителя
 func (a *api) securityEvents(w http.ResponseWriter, _ *http.Request, u domain.User) {
 	writeJSON(w, http.StatusOK, map[string]any{"events": nonNil(a.Core.SecurityEvents(u.ID))})
 }
@@ -597,7 +567,6 @@ func (a *api) respond(w http.ResponseWriter, u domain.User, v any, err error, su
 	writeError(w, code, err.Error())
 }
 
-// surfaceText - что пытался сделать пользователь (для уведомления наставнику)
 var surfaceText = map[string]string{
 	"request_view": "открыть чужую заявку", "confirm": "подтвердить чужую заявку", "cancel": "отменить чужую заявку",
 	"approval": "решить чужую заявку на согласовании", "onboarding_step": "отметить шаг адаптации не по роли",
@@ -605,7 +574,6 @@ var surfaceText = map[string]string{
 	"incident": "объявить или закрыть инцидент без роли SRE",
 }
 
-// security - событие безопасности: метрика, лог, уведомление наставнику
 func (a *api) security(userID, kind, detail string) {
 	ev, alerted := a.Core.RecordSecurity(userID, kind, detail)
 	a.Metrics.Security.WithLabelValues(kind).Inc()
@@ -616,7 +584,6 @@ func (a *api) security(userID, kind, detail string) {
 		slog.String("detail", ev.Detail), slog.Bool("mentor_notified", alerted))
 }
 
-// nonNil - пустой список в JSON как [], а не null
 func nonNil[T any](s []T) []T {
 	if s == nil {
 		return []T{}
@@ -635,7 +602,6 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
-// writeJSON - JSON-ответ
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(v); err != nil {
@@ -647,7 +613,6 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_, _ = w.Write(buf.Bytes())
 }
 
-// writeError - ошибка в едином формате
 func writeError(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
