@@ -5,6 +5,7 @@
 - Видео: https://disk.yandex.ru/d/bkp3iME__L70xw
 - Презентация: https://github.com/avequa/hackaton_ai_buddy/blob/main/team_pypsiki.pdf
 - Репозиторий: https://github.com/avequa/hackaton_ai_buddy
+- Диаграммы: https://github.com/avequa/hackaton_ai_buddy/tree/main/docs_architecture
 
 Стажёр пишет в чат, что ему нужно, обычными словами. Помощник готовит заявки во внутренние сервисы, отвечает по базе знаний, предупреждает о сбоях и подсказывает следующий шаг плана адаптации. Отправляет заявку всегда человек, права проверяет сервер. Наставник получает очередь решений, тревоги и сводку по стажёру перед встречей 1:1.
 
