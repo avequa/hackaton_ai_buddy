@@ -2,8 +2,8 @@
 
 Помощник стажёра на первые недели работы. Hack&Change 2026, кейс Авито «AI-buddy: ИИ-наставник для стажёров».
 
-- Видео: https://disk.yandex.ru/d/bkp3iME__L70xw
-- Презентация: https://github.com/avequa/hackaton_ai_buddy/blob/main/team_pypsiki.pdf
+- Видео (демо): https://disk.yandex.ru/d/bkp3iME__L70xw
+- Презентация: https://github.com/avequa/hackaton_ai_buddy/blob/main/pupsiki_team_itog.pdf
 - Репозиторий: https://github.com/avequa/hackaton_ai_buddy
 - Диаграммы: https://github.com/avequa/hackaton_ai_buddy/tree/main/docs_architecture
 
